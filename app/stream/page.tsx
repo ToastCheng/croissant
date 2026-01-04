@@ -62,7 +62,7 @@ export default function StreamPage() {
     };
 
     return (
-        <main className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-8">
+        <main className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-8 pt-24">
             <h1 className="text-4xl font-bold mb-8 tracking-tighter">Live Stream</h1>
 
             <div className="relative w-full max-w-4xl aspect-video bg-zinc-900 rounded-2xl overflow-hidden border border-zinc-800 shadow-2xl flex items-center justify-center">

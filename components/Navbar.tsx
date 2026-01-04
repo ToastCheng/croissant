@@ -19,6 +19,12 @@ export default function Navbar() {
         >
           System Stats
         </Link>
+        <Link
+          href="/stream"
+          className="text-zinc-300 hover:text-white transition-colors duration-200 text-sm font-medium uppercase tracking-wide"
+        >
+          Stream
+        </Link>
       </div>
     </nav>
   );
