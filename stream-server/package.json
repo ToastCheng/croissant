@@ -1,0 +1,13 @@
+{
+    "name": "stream-server",
+    "version": "1.0.0",
+    "description": "Video streaming server",
+    "main": "server.js",
+    "scripts": {
+        "start": "node server.js"
+    },
+    "dependencies": {
+        "ws": "^8.16.0",
+        "fluent-ffmpeg": "^2.1.2"
+    }
+}
