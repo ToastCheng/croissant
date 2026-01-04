@@ -4,16 +4,26 @@ const http = require('http');
 const path = require('path');
 const fs = require('fs');
 
-const wss = new WebSocket.Server({ port: 8080 });
+const server = http.createServer((req, res) => {
+    // Health check endpoint
+    if (req.method === 'GET' && req.url === '/health') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }));
+        return;
+    }
+
+    // Default response
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Stream Server is running');
+});
+
+const wss = new WebSocket.Server({ server });
 
 const VIDEO_PATH = path.join(__dirname, 'maru.mp4'); // Ensure this file exists
 
-console.log('WebSocket server starting on port 8080');
-
-// Create a dummy video file if it doesn't exist (using ffmpeg logic or manual)
-// For simplicity, we assume the user will provide one, or we can generate a simple one.
-// Let's proceed assuming the user has or we will generate a 'test_video.mp4' later.
-
+server.listen(8080, () => {
+    console.log('HTTP/WebSocket server listening on port 8080');
+});
 wss.on('connection', (ws) => {
     console.log('Client connected');
     let ffmpegCommand = null;
@@ -92,6 +102,7 @@ wss.on('connection', (ws) => {
         }
     });
 });
+
 
 // Helper: Basic robust JPEG frame parser is tricky in simple node script without deps.
 // We will refine the server if the crude fluid pipe doesn't work well on client.

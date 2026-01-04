@@ -10,7 +10,15 @@ export default function StreamPage() {
 
     useEffect(() => {
         // Connect to WebSocket server on mount
-        const ws = new WebSocket('ws://localhost:8080');
+        // Use environment variable if set, otherwise derive from current location
+        // This supports 'example.com' automatically assuming port 8080 is open
+        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const host = window.location.hostname;
+        const port = '8080'; // Default port for stream-server
+
+        const wsUrl = process.env.WS_URL || `${protocol}://${host}:${port}`;
+
+        const ws = new WebSocket(wsUrl);
         ws.binaryType = 'arraybuffer';
 
         ws.onopen = () => {
