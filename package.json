@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --experimental-https --experimental-https-key ./stream-server/key.pem --experimental-https-cert ./stream-server/cert.pem",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
