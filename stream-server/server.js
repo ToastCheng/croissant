@@ -1,10 +1,13 @@
 const WebSocket = require('ws');
 const ffmpeg = require('fluent-ffmpeg');
-const http = require('http');
+const https = require('https');
 const path = require('path');
 const fs = require('fs');
 
-const server = http.createServer((req, res) => {
+const server = https.createServer({
+    key: fs.readFileSync(path.join(__dirname, 'key.pem')),
+    cert: fs.readFileSync(path.join(__dirname, 'cert.pem'))
+}, (req, res) => {
     // Health check endpoint
     if (req.method === 'GET' && req.url === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -14,7 +17,7 @@ const server = http.createServer((req, res) => {
 
     // Default response
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Stream Server is running');
+    res.end('Stream Server is running (HTTPS)');
 });
 
 const wss = new WebSocket.Server({ server });
@@ -22,7 +25,7 @@ const wss = new WebSocket.Server({ server });
 const VIDEO_PATH = path.join(__dirname, 'maru.mp4'); // Ensure this file exists
 
 server.listen(8080, () => {
-    console.log('HTTP/WebSocket server listening on port 8080');
+    console.log('HTTPS/WebSocket server listening on port 8080');
 });
 wss.on('connection', (ws) => {
     console.log('Client connected');
