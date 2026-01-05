@@ -5,6 +5,7 @@ import { useState, useRef, useEffect } from 'react';
 export default function StreamPage() {
     const [isConnected, setIsConnected] = useState(false);
     const [isStreaming, setIsStreaming] = useState(false);
+    const [firstFrameReceived, setFirstFrameReceived] = useState(false);
     const videoRef = useRef<HTMLImageElement>(null);
     const wsRef = useRef<WebSocket | null>(null);
 
@@ -30,6 +31,7 @@ export default function StreamPage() {
             console.log('Disconnected from Stream Server');
             setIsConnected(false);
             setIsStreaming(false);
+            setFirstFrameReceived(false);
         };
 
         ws.onmessage = (event) => {
@@ -39,6 +41,8 @@ export default function StreamPage() {
             const arrayBuffer = event.data;
             const blob = new Blob([arrayBuffer], { type: 'image/jpeg' });
             const url = URL.createObjectURL(blob);
+
+            setFirstFrameReceived(true);
 
             if (videoRef.current) {
                 // Revoke previous to avoid leak
@@ -57,6 +61,7 @@ export default function StreamPage() {
 
     const handleStart = () => {
         if (wsRef.current && isConnected) {
+            setFirstFrameReceived(false);
             wsRef.current.send('start');
             setIsStreaming(true);
         }
@@ -66,6 +71,7 @@ export default function StreamPage() {
         if (wsRef.current && isConnected) {
             wsRef.current.send('stop');
             setIsStreaming(false);
+            setFirstFrameReceived(false);
         }
     };
 
@@ -78,7 +84,7 @@ export default function StreamPage() {
                     <img
                         ref={videoRef}
                         alt="Live Stream"
-                        className="w-full h-full object-contain"
+                        className={`w-full h-full object-contain ${!firstFrameReceived && isStreaming ? 'opacity-0' : 'opacity-100'} transition-opacity duration-300`}
                     />
                 ) : (
                     <div className="text-zinc-500">Connecting to server...</div>
@@ -88,6 +94,16 @@ export default function StreamPage() {
                 {isConnected && !isStreaming && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
                         <p className="text-xl font-medium">Ready to Stream</p>
+                    </div>
+                )}
+
+                {/* Visual loading state when streaming started but no frame yet */}
+                {isConnected && isStreaming && !firstFrameReceived && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-zinc-900 z-10">
+                        <div className="flex flex-col items-center gap-3">
+                            <div className="w-8 h-8 border-4 border-white/20 border-t-white rounded-full animate-spin" />
+                            <p className="text-sm text-zinc-400">Initializing Stream...</p>
+                        </div>
                     </div>
                 )}
             </div>
