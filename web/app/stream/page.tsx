@@ -17,7 +17,9 @@ export default function StreamPage() {
         const host = window.location.hostname;
         const port = '8080'; // Default port for stream-server
 
-        const wsUrl = process.env.WS_URL || `${protocol}://${host}:${port}`;
+        // const wsUrl = process.env.WS_URL || `${protocol}://${host}:${port}`;
+        const wsUrl = 'http://home.toastcheng.com/ws';
+        console.log(wsUrl);
 
         const ws = new WebSocket(wsUrl);
         ws.binaryType = 'arraybuffer';
