@@ -95,7 +95,7 @@ wss.on('connection', (ws) => {
         } else if (msg === 'stop') {
             if (rpiProcess) {
                 console.log('Stopping stream...');
-                rpiProcess.kill('SIGTERM'); // Try SIGTERM first
+                rpiProcess.kill('SIGKILL'); // Force kill to ensure camera is released
                 rpiProcess = null;
             }
         }
@@ -104,7 +104,8 @@ wss.on('connection', (ws) => {
     ws.on('close', () => {
         console.log('Client disconnected');
         if (rpiProcess) {
-            rpiProcess.kill('SIGTERM');
+            console.log('Cleaning up camera process...');
+            rpiProcess.kill('SIGKILL');
             rpiProcess = null;
         }
     });
