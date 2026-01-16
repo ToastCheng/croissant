@@ -10,7 +10,7 @@ export default function StreamPage() {
     const [isConnected, setIsConnected] = useState(false);
     const [isStreaming, setIsStreaming] = useState(false);
     const [firstFrameReceived, setFirstFrameReceived] = useState(false);
-    const [mode, setMode] = useState<'on-demand' | 'continuous'>('on-demand');
+    const [mode, setMode] = useState<'on-demand' | 'continuous' | null>(null);
     const videoRef = useRef<HTMLImageElement>(null);
     const wsRef = useRef<WebSocket | null>(null);
 
@@ -134,14 +134,14 @@ export default function StreamPage() {
                 )}
 
                 {/* Overlay if not streaming but connected */}
-                {isConnected && !isStreaming && (
+                {isConnected && !isStreaming && mode === 'on-demand' && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm pointer-events-none">
                         <p className="text-xl font-medium">Ready to Stream</p>
                     </div>
                 )}
 
                 {/* Visual loading state when streaming started but no frame yet */}
-                {isConnected && isStreaming && !firstFrameReceived && (
+                {isConnected && (isStreaming || mode === 'continuous') && !firstFrameReceived && (
                     <div className="absolute inset-0 flex items-center justify-center bg-zinc-900 z-10">
                         <div className="flex flex-col items-center gap-3">
                             <div className="w-8 h-8 border-4 border-white/20 border-t-white rounded-full animate-spin" />
