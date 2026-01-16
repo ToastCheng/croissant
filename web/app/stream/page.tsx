@@ -1,6 +1,9 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { FaPlay } from "react-icons/fa6";
+import { TbPlayerPauseFilled } from "react-icons/tb";
+import { FaCamera } from "react-icons/fa";
 
 export default function StreamPage() {
     const [isConnected, setIsConnected] = useState(false);
@@ -128,21 +131,29 @@ export default function StreamPage() {
                 <button
                     onClick={handleToggleStream}
                     disabled={!isConnected}
-                    className={`px-8 py-3 rounded-full font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed min-w-[160px]
+                    style={{ width: '64px', height: '64px' }}
+                    className={`flex items-center justify-center rounded-full font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed
                         ${isStreaming
                             ? 'bg-red-600 text-white hover:bg-red-700'
                             : 'bg-white text-black hover:bg-gray-200'
                         }`}
+                    aria-label={isStreaming ? "Stop Stream" : "Start Stream"}
                 >
-                    {isStreaming ? 'STOP STREAM' : 'START STREAM'}
+                    {isStreaming ? (
+                        <TbPlayerPauseFilled size={24} />
+                    ) : (
+                        <FaPlay size={24} />
+                    )}
                 </button>
 
                 <button
                     onClick={handleCaptureFrame}
                     disabled={!isStreaming || !firstFrameReceived}
-                    className="px-8 py-3 rounded-full bg-zinc-800 text-white font-bold border border-zinc-700 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    style={{ width: '64px', height: '64px' }}
+                    className="flex items-center justify-center rounded-full bg-zinc-800 text-white border border-zinc-700 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    aria-label="Capture Frame"
                 >
-                    CAPTURE FRAME
+                    <FaCamera size={24} />
                 </button>
             </div>
 
