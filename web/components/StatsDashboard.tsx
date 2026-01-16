@@ -78,12 +78,15 @@ export default function StatsDashboard({ initialData }: { initialData?: StatsDat
 
         <div className="flex items-center gap-4 bg-white/5 p-4 rounded-2xl border border-white/10 backdrop-blur-sm">
           <span className="text-zinc-400 font-medium">Continuous Mode</span>
-          <button
-            onClick={toggleMode}
-            className={`w-14 h-8 rounded-full transition-colors relative ${isContinuous ? 'bg-green-500' : 'bg-zinc-600'}`}
-          >
-            <div className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full transition-transform ${isContinuous ? 'translate-x-6' : 'translate-x-0'}`} />
-          </button>
+          <label className="inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              className="sr-only peer"
+              checked={isContinuous}
+              onChange={() => toggleMode()}
+            />
+            <div className="relative w-14 h-8 bg-zinc-600 peer-focus:outline-none rounded-full peer peer-checked:bg-green-500 after:content-[''] after:absolute after:top-1 after:start-1 after:bg-white after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:after:translate-x-6"></div>
+          </label>
         </div>
       </header>
 
