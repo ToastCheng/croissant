@@ -61,19 +61,33 @@ export default function StreamPage() {
         };
     }, []);
 
-    const handleStart = () => {
+    const handleToggleStream = () => {
         if (wsRef.current && isConnected) {
-            setFirstFrameReceived(false);
-            wsRef.current.send('start');
-            setIsStreaming(true);
+            if (isStreaming) {
+                // Stop
+                wsRef.current.send('stop');
+                setIsStreaming(false);
+                setFirstFrameReceived(false);
+            } else {
+                // Start
+                setFirstFrameReceived(false);
+                wsRef.current.send('start');
+                setIsStreaming(true);
+            }
         }
     };
 
-    const handleStop = () => {
-        if (wsRef.current && isConnected) {
-            wsRef.current.send('stop');
-            setIsStreaming(false);
-            setFirstFrameReceived(false);
+    const handleCaptureFrame = () => {
+        if (videoRef.current && videoRef.current.src) {
+            const now = new Date();
+            // Format YYYYMMDD-HHMMSS
+            const pad = (n: number) => n.toString().padStart(2, '0');
+            const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+
+            const a = document.createElement('a');
+            a.href = videoRef.current.src;
+            a.download = `${timestamp}.jpeg`;
+            a.click();
         }
     };
 
@@ -94,7 +108,7 @@ export default function StreamPage() {
 
                 {/* Overlay if not streaming but connected */}
                 {isConnected && !isStreaming && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm pointer-events-none">
                         <p className="text-xl font-medium">Ready to Stream</p>
                     </div>
                 )}
@@ -112,18 +126,23 @@ export default function StreamPage() {
 
             <div className="mt-8 flex gap-6">
                 <button
-                    onClick={handleStart}
-                    disabled={!isConnected || isStreaming}
-                    className="px-8 py-3 rounded-full bg-white text-black font-bold hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    onClick={handleToggleStream}
+                    disabled={!isConnected}
+                    className={`px-8 py-3 rounded-full font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed min-w-[160px]
+                        ${isStreaming
+                            ? 'bg-red-600 text-white hover:bg-red-700'
+                            : 'bg-white text-black hover:bg-gray-200'
+                        }`}
                 >
-                    START STREAM
+                    {isStreaming ? 'STOP STREAM' : 'START STREAM'}
                 </button>
+
                 <button
-                    onClick={handleStop}
-                    disabled={!isConnected || !isStreaming}
-                    className="px-8 py-3 rounded-full bg-red-600 text-white font-bold hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    onClick={handleCaptureFrame}
+                    disabled={!isStreaming || !firstFrameReceived}
+                    className="px-8 py-3 rounded-full bg-zinc-800 text-white font-bold border border-zinc-700 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                 >
-                    STOP STREAM
+                    CAPTURE FRAME
                 </button>
             </div>
 
