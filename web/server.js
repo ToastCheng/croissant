@@ -29,6 +29,8 @@ app.prepare().then(() => {
         try {
             // Be sure to pass true to the parse function to get the query object
             const parsedUrl = parse(req.url, true)
+
+            // Allow Next.js to handle all other credentials
             handle(req, res, parsedUrl)
         } catch (err) {
             console.error('Error occurred handling', req.url, err)

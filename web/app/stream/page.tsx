@@ -5,24 +5,27 @@ import { FaPlay } from "react-icons/fa6";
 import { TbPlayerPauseFilled } from "react-icons/tb";
 import { FaCamera } from "react-icons/fa";
 
+// ... imports
 export default function StreamPage() {
     const [isConnected, setIsConnected] = useState(false);
     const [isStreaming, setIsStreaming] = useState(false);
     const [firstFrameReceived, setFirstFrameReceived] = useState(false);
+    const [mode, setMode] = useState<'on-demand' | 'continuous'>('on-demand');
     const videoRef = useRef<HTMLImageElement>(null);
     const wsRef = useRef<WebSocket | null>(null);
 
     useEffect(() => {
-        // Connect to WebSocket server on mount
-        // Use environment variable if set, otherwise derive from current location
-        // This supports 'example.com' automatically assuming port 8080 is open
         const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        const host = window.location.hostname;
-        const port = '8080'; // Default port for stream-server
+        // Use current host (port 3000) for both WS (via proxy) and API
+        const wsUrl = `${protocol}://${window.location.host}/ws`;
 
-        // const wsUrl = process.env.WS_URL || `${protocol}://${host}:${port}`;
-        const wsUrl = 'http://home.toastcheng.com/ws';
-        console.log(wsUrl);
+        // Fetch settings first
+        fetch('/api/settings')
+            .then(res => res.json())
+            .then(res => {
+                setMode(res.mode);
+            })
+            .catch(err => console.error("Failed to fetch settings:", err));
 
         const ws = new WebSocket(wsUrl);
         ws.binaryType = 'arraybuffer';
@@ -30,7 +33,28 @@ export default function StreamPage() {
         ws.onopen = () => {
             console.log('Connected to Stream Server');
             setIsConnected(true);
+
+            // Check mode and auto-start if needed
+            fetch('/api/settings')
+                .then(res => res.json())
+                .then(res => {
+                    setMode(res.mode);
+                    if (res.mode === 'continuous') {
+                        ws.send('start');
+                        setIsStreaming(true);
+                        setFirstFrameReceived(false);
+                    }
+                })
+                .catch(err => console.error("Failed to fetch settings:", err));
         };
+
+        // Initial check in case we re-rendered but socket stayed open (though strict mode might close/reopen)
+        // This is mainly for UI synchronization
+        fetch('/api/settings')
+            .then(res => res.json())
+            .then(res => setMode(res.mode))
+            .catch(err => console.error("Failed to fetch settings:", err));
+
 
         ws.onclose = () => {
             console.log('Disconnected from Stream Server');
@@ -130,7 +154,7 @@ export default function StreamPage() {
             <div className="mt-8 flex gap-6">
                 <button
                     onClick={handleToggleStream}
-                    disabled={!isConnected}
+                    disabled={!isConnected || mode === 'continuous'}
                     style={{ width: '64px', height: '64px' }}
                     className={`flex items-center justify-center rounded-full font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed
                         ${isStreaming

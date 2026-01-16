@@ -8,6 +8,20 @@ class StreamManager {
         this.rpiProcess = null;
         this.clients = new Set(); // Set of WebSocket clients that want the stream
         this.isStreaming = false;
+        this.mode = 'on-demand'; // 'on-demand' or 'continuous'
+    }
+
+    setMode(mode) {
+        if (mode !== 'on-demand' && mode !== 'continuous') return false;
+        console.log(`Switching mode to: ${mode}`);
+        this.mode = mode;
+
+        if (this.mode === 'continuous') {
+            this.startStreamIfNeeded();
+        } else {
+            this.stopStreamIfNoClients();
+        }
+        return true;
     }
 
     addClient(ws) {
@@ -27,8 +41,11 @@ class StreamManager {
     }
 
     startStreamIfNeeded() {
+        // In continuous mode, we force start. In on-demand, we need at least 1 client.
+        const shouldStart = (this.mode === 'continuous') || (this.clients.size > 0);
+
+        if (!shouldStart) return;
         if (this.isStreaming || this.rpiProcess) return;
-        if (this.clients.size === 0) return;
 
         console.log('Starting Pi Camera stream...');
         this.isStreaming = true;
@@ -56,7 +73,7 @@ class StreamManager {
         });
 
         this.rpiProcess.stderr.on('data', (data) => {
-            console.error(`rpicam-vid: ${data}`);
+            // console.debug(`rpicam-vid: ${data}`);
         });
 
         let buffer = Buffer.alloc(0);
@@ -89,6 +106,8 @@ class StreamManager {
     }
 
     stopStreamIfNoClients() {
+        if (this.mode === 'continuous') return; // Never stop in continuous mode
+
         if (this.clients.size === 0 && this.rpiProcess) {
             console.log('No clients left. Stopping stream...');
             this.forceStop();
@@ -115,11 +134,50 @@ class StreamManager {
 const streamManager = new StreamManager();
 
 const server = http.createServer((req, res) => {
+    // CORS headers
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (req.method === 'OPTIONS') {
+        res.writeHead(204);
+        res.end();
+        return;
+    }
+
     // Health check endpoint
     if (req.method === 'GET' && req.url === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }));
         return;
+    }
+
+    // Settings endpoint
+    if (req.url === '/settings') {
+        if (req.method === 'GET') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ mode: streamManager.mode }));
+            return;
+        } else if (req.method === 'POST') {
+            let body = '';
+            req.on('data', chunk => body += chunk.toString());
+            req.on('end', () => {
+                try {
+                    const { mode } = JSON.parse(body);
+                    if (streamManager.setMode(mode)) {
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ status: 'updated', mode: streamManager.mode }));
+                    } else {
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: 'Invalid mode' }));
+                    }
+                } catch (e) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Invalid JSON' }));
+                }
+            });
+            return;
+        }
     }
 
     // Default response
@@ -138,7 +196,7 @@ wss.on('connection', (ws) => {
 
     ws.on('message', (message) => {
         const msg = message.toString();
-        console.log('Received:', msg);
+        // console.log('Received:', msg); // Reduce noise
 
         if (msg === 'start') {
             streamManager.addClient(ws);
