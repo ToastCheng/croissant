@@ -72,9 +72,11 @@ wss.on('connection', (ws) => {
 
                     let offset = 0;
                     while (true) {
+                        // 0xFF, 0xD8 is the Start of Image (SOI) marker for JPEG
                         const start = buffer.indexOf(Buffer.from([0xFF, 0xD8]), offset);
                         if (start === -1) break;
 
+                        // 0xFF, 0xD9 is the End of Image (EOI) marker for JPEG
                         const end = buffer.indexOf(Buffer.from([0xFF, 0xD9]), start + 2);
                         if (end === -1) break;
 

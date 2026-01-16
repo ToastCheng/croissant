@@ -73,3 +73,29 @@ To set it locally, create a `.env.local` file in the `web` directory:
 ```
 WS_URL=wss://your-server-url
 ```
+
+## Technical Details
+
+### MJPEG Stream Parsing
+
+The server streams video using the **MJPEG** (Motion JPEG) format, which treats a video as a sequence of distinct JPEG images. The client parses this stream by looking for the byte markers that define the start and end of each JPEG image.
+
+#### Magic Numbers
+
+- **`0xFF, 0xD8` (SOI - Start of Image)**: These two bytes mark the beginning of a JPEG image.
+- **`0xFF, 0xD9` (EOI - End of Image)**: These two bytes mark the end of the JPEG image.
+
+#### Why Two Bytes?
+
+We use a two-byte sequence because a single byte like `0xFF` (255) is not unique enough. In a photograph, `0xFF` represents a very bright pixel value and occurs frequently. If we used `0xFF` as a marker, the parser would incorrectly cut the image every time it encountered a white pixel.
+
+The JPEG standard uses `0xFF` as a "prefix" byte.
+- `0xFF` followed by `0xD8` means "Start of Image".
+- `0xFF` followed by `0x00` means "Literal 255" (a regular pixel value, not a marker).
+
+#### What if the image actually contains 0xFF?
+If the compressed image data naturally contains the byte 0xFF, the standard requires it to be written as 0xFF 0x00.
+
+The parser sees 0xFF, looks at the next byte (0x00), and knows "Ah, this isn't a marker, this is just a literal 255 value".
+
+This system ensures that the markers can be reliably detected within the binary stream without conflict.
