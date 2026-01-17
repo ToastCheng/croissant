@@ -38,6 +38,9 @@ class StreamManager {
             this.rotateRecordings();
             this.ensureThumbnails();
         }, 60 * 1000);
+
+        // Auto-start if in continuous mode
+        this.startStreamIfNeeded();
     }
 
     startDetection() {
