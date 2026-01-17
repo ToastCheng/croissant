@@ -66,11 +66,11 @@ def main():
                             "box": box.xywh.tolist()[0] # [x, y, w, h]
                         })
 
-            # 6. Output Result (if any)
-            if detections:
-                output = {"detections": detections}
-                print(json.dumps(output))
-                sys.stdout.flush()
+            # 6. Output Result
+            # Always print to allow state tracking (absence detection)
+            output = {"detections": detections}
+            print(json.dumps(output))
+            sys.stdout.flush()
 
         except Exception as e:
             sys.stderr.write(f"Error processing frame: {e}\n")

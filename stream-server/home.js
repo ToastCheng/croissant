@@ -19,6 +19,30 @@ if (!fs.existsSync(THUMBNAILS_DIR)) {
     fs.mkdirSync(THUMBNAILS_DIR, { recursive: true });
 }
 
+class StateTracker {
+    constructor(label, delayMs = 2000) {
+        this.label = label;
+        this.delayMs = delayMs;
+        this.isPresent = false;
+        this.potentialState = false;
+        this.firstTransitionTime = 0;
+    }
+
+    update(isDetected) {
+        if (isDetected !== this.potentialState) {
+            this.potentialState = isDetected;
+            this.firstTransitionTime = Date.now();
+        } else if (this.potentialState !== this.isPresent) {
+            if (Date.now() - this.firstTransitionTime >= this.delayMs) {
+                this.isPresent = this.potentialState;
+                console.log(`State Update: ${this.label}Present = ${this.isPresent}`);
+                return true;
+            }
+        }
+        return false;
+    }
+}
+
 // singleton class to manage the stream process and connected clients
 class StreamManager {
     constructor() {
@@ -32,6 +56,10 @@ class StreamManager {
         this.pythonProcess = null;
         this.detectionBuffer = Buffer.alloc(0);
         this.lastFrameTime = 0;
+
+        // Presence Trackers
+        this.catTracker = new StateTracker('cat', 2000);
+        this.personTracker = new StateTracker('person', 2000);
 
         // Check for retention and thumbnails every minute
         setInterval(() => {
@@ -57,12 +85,18 @@ class StreamManager {
             rl.on('line', (line) => {
                 try {
                     const data = JSON.parse(line);
-                    if (data.detections) {
-                        const msg = JSON.stringify({ type: 'detection', data: data.detections });
-                        // this.clients.forEach(client => {
-                        //     if (client.readyState === 1) client.send(msg);
-                        // });
-                        console.log('Object Detected:', JSON.stringify(data.detections));
+                    if (data.detections !== undefined) {
+                        // Track Presence
+                        const hasCat = data.detections.some(d => d.label === 'cat');
+                        const hasPerson = data.detections.some(d => d.label === 'person');
+
+                        this.catTracker.update(hasCat);
+                        this.personTracker.update(hasPerson);
+
+                        // Only log specific detections if needed, or rely on state logs
+                        if (data.detections.length > 0) {
+                            // console.log('Object Detected:', JSON.stringify(data.detections));
+                        }
                     }
                 } catch (e) {
                     console.log('Python:', line);
