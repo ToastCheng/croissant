@@ -165,6 +165,9 @@ class StreamManager {
         console.log('Starting recording...');
 
         // ffmpeg arguments
+        // Note: '-f segment' with '-segment_time 300' tells ffmpeg to automatically
+        // split the recording into separate 5-minute files indefinitely.
+        // The process runs continuously until stopped.
         const args = [
             '-f', 'mjpeg',
             '-framerate', '15',
@@ -203,15 +206,32 @@ class StreamManager {
     stopRecording() {
         if (this.ffmpegProcess) {
             console.log('Stopping recording...');
-            this.ffmpegProcess.kill('SIGTERM'); // SIGTERM allows ffmpeg to close file cleanly?
-            // If piped input closes (which happens when rpiProcess dies), ffmpeg usually finishes.
-            // But if we want to stop ONLY recording, we kill it.
-            // Unpipe to prevent EPIPE errors on rpiProcess if we kill ffmpeg but keep camera?
-            if (this.rpiProcess) {
-                this.rpiProcess.stdout.unpipe(this.ffmpegProcess.stdin);
-            }
+            const proc = this.ffmpegProcess;
             this.ffmpegProcess = null;
+
+            // Unpipe to allow clean exit mechanism for ffmpeg
+            if (this.rpiProcess) {
+                this.rpiProcess.stdout.unpipe(proc.stdin);
+            }
+
+            // SIGTERM allows ffmpeg to write trailer and exit cleanly
+            proc.kill('SIGTERM');
+
+            return new Promise(resolve => {
+                const handler = () => {
+                    console.log('Recording process exited cleanly.');
+                    resolve();
+                };
+                proc.once('exit', handler);
+                // Safety timeout in case it hangs
+                setTimeout(() => {
+                    console.log('Recording process stop timeout.');
+                    proc.off('exit', handler);
+                    resolve();
+                }, 2000);
+            });
         }
+        return Promise.resolve();
     }
 
     stopStreamIfNoClients() {
@@ -224,12 +244,14 @@ class StreamManager {
     }
 
     forceStop() {
-        this.stopRecording();
+        // Return promise to allow waiting for recording to close
+        const p = this.stopRecording();
         if (this.rpiProcess) {
             this.rpiProcess.kill('SIGKILL');
             this.rpiProcess = null;
         }
         this.isStreaming = false;
+        return p;
     }
 
     rotateRecordings() {
@@ -422,10 +444,18 @@ wss.on('connection', (ws) => {
 });
 
 // Robust cleanup on server exit
-const cleanup = () => {
+const cleanup = async () => {
     console.log('Server shutting down...');
-    streamManager.forceStop();
-    process.exit();
+
+    // Close servers to stop accepting connections
+    server.close();
+    wss.close();
+
+    // Wait for recording to save cleanly
+    await streamManager.forceStop();
+
+    console.log('Cleanup complete. Exiting.');
+    process.exit(0);
 };
 
 process.on('SIGINT', cleanup);

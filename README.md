@@ -74,6 +74,57 @@ To set it locally, create a `.env.local` file in the `web` directory:
 WS_URL=wss://your-server-url
 ```
 
+## Streaming & Recording Flow
+
+The server operates in two modes: **On-Demand** and **Continuous**.
+
+### State Machine Diagram
+
+```mermaid
+stateDiagram-v2
+    [*] --> Idle: Server Start
+    
+    state "On-Demand Mode" as OnDemand {
+        Idle --> Streaming: Client Connects
+        Streaming --> Idle: Last Client Disconnects
+        Streaming --> Streaming: New Client (Broadcast)
+    }
+
+    state "Continuous Mode" as Continuous {
+        [*] --> Recording: Switch to Continuous
+        Recording --> Recording: Client Connects (Attach to Stream)
+        Recording --> Recording: Client Disconnects (Stream Persists)
+        Recording --> Idle: Switch to On-Demand
+    }
+
+    Idle --> Recording: setMode('continuous')
+    Recording --> Idle: setMode('on-demand')
+```
+
+### Flow Details
+
+1.  **On-Demand Mode (Default)**
+    *   **Start**: When a client connects (`ws.on('message', 'start')`), `startStreamIfNeeded()` spawns `rpicam-vid`.
+    *   **Stop**: When the last client disconnects, `stopStreamIfNoClients()` kills the `rpicam-vid` process.
+    *   **Recording**: Recording is disabled.
+
+2.  **Continuous Mode**
+    *   **Start**: When switched to continuous mode (`setMode('continuous')`), `rpicam-vid` is spawned immediately if not running.
+    *   **Recording**: `startRecording()` is called. It spawns `ffmpeg` and pipes the camera output (`rpiProcess.stdout`) to `ffmpeg.stdin`. This process persists regardless of client connections.
+    *   **Clients**: New clients simply subscribe to the existing broadcast frames. Disconnecting clients do *not* stop the stream server.
+    *   **Persistence**: If the stream was already running (from On-Demand), switching to Continuous immediately attaches the `ffmpeg` recording process to the existing stream.
+
+### Auto Recording
+*   **Rotation**: Recordings are split into 5-minute MP4 segments.
+*   **Retention**: A ring buffer ensures only the latest 36 recordings (and their thumbnails) are kept.
+*   **Thumbnails**: Generated automatically every minute for efficient client-side preview.
+
+### Graceful Shutdown
+The server handles termination signals (`SIGINT`, `SIGTERM`) to ensure data integrity. When the server stops:
+1. It stops accepting new connections.
+2. It signals the `ffmpeg` process to finish the current recording segment.
+3. It waits for `ffmpeg` to exit cleanly, ensuring the MP4 file trailer is written and the file is not corrupted.
+
 ## Technical Details
 
 ### MJPEG Stream Parsing
