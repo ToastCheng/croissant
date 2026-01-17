@@ -6,6 +6,10 @@ const path = require('path');
 
 const RECORDINGS_DIR = path.join(__dirname, 'recordings');
 const THUMBNAILS_DIR = path.join(__dirname, 'thumbnails');
+const PYTHON_EXEC = path.join(__dirname, '../image-server/venv/bin/python');
+const PYTHON_SCRIPT = path.join(__dirname, '../image-server/video_processor.py');
+const SOI = Buffer.from([0xff, 0xd8]);
+const EOI = Buffer.from([0xff, 0xd9]);
 
 // Ensure directories exist
 if (!fs.existsSync(RECORDINGS_DIR)) {
@@ -24,11 +28,73 @@ class StreamManager {
         this.isStreaming = false;
         this.mode = 'continuous'; // 'on-demand' or 'continuous'
 
+        // Python Detection
+        this.pythonProcess = null;
+        this.detectionBuffer = Buffer.alloc(0);
+        this.lastFrameTime = 0;
+
         // Check for retention and thumbnails every minute
         setInterval(() => {
             this.rotateRecordings();
             this.ensureThumbnails();
         }, 60 * 1000);
+    }
+
+    startDetection() {
+        if (this.pythonProcess) return;
+
+        console.log('Starting Python Detection Service...');
+        try {
+            this.pythonProcess = spawn(PYTHON_EXEC, [PYTHON_SCRIPT]);
+
+            // Handle Output (JSON Logs)
+            const readline = require('readline');
+            const rl = readline.createInterface({ input: this.pythonProcess.stdout });
+
+            rl.on('line', (line) => {
+                try {
+                    const data = JSON.parse(line);
+                    if (data.detections) {
+                        const msg = JSON.stringify({ type: 'detection', data: data.detections });
+                        // this.clients.forEach(client => {
+                        //     if (client.readyState === 1) client.send(msg);
+                        // });
+                        console.log('Object Detected:', JSON.stringify(data.detections));
+                    }
+                } catch (e) {
+                    console.log('Python:', line);
+                }
+            });
+
+            this.pythonProcess.stderr.on('data', d => console.error('Python Error:', d.toString()));
+            this.pythonProcess.on('exit', () => {
+                this.pythonProcess = null;
+                console.log('Python detection stopped');
+            });
+        } catch (error) {
+            console.error('Failed to spawn python process:', error);
+        }
+    }
+
+
+
+    sendFrameToPython(frame) {
+        const now = Date.now();
+        // Rate limit: 200ms = 5fps
+        if (now - this.lastFrameTime < 200) return;
+
+        this.lastFrameTime = now;
+
+        try {
+            // Protocol: 4-byte Big Endian Length + JPEG Bytes
+            const header = Buffer.alloc(4);
+            header.writeUInt32BE(frame.length, 0);
+            this.pythonProcess.stdin.write(header);
+            this.pythonProcess.stdin.write(frame);
+        } catch (e) {
+            console.error('Error writing to python:', e);
+            this.pythonProcess = null; // Reset if pipe broken
+        }
     }
 
     ensureThumbnails() {
@@ -102,6 +168,9 @@ class StreamManager {
         console.log('Starting Pi Camera stream...');
         this.isStreaming = true;
 
+        // Start Python Detection
+        this.startDetection();
+
         // Spawn rpicam-vid
         this.rpiProcess = spawn('rpicam-vid', [
             '--inline',
@@ -152,6 +221,9 @@ class StreamManager {
 
                 // Broadcast frame to all connected clients
                 this.broadcast(frame);
+
+                // Send to Python for detection
+                this.sendFrameToPython(frame);
 
                 offset = end + 2;
             }
@@ -253,6 +325,12 @@ class StreamManager {
         if (this.rpiProcess) {
             this.rpiProcess.kill('SIGKILL');
             this.rpiProcess = null;
+        }
+
+        // Stop Python
+        if (this.pythonProcess) {
+            this.pythonProcess.kill();
+            this.pythonProcess = null;
         }
         this.isStreaming = false;
         return p;
