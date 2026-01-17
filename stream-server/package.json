@@ -7,7 +7,9 @@
         "dev": "node home.js"
     },
     "dependencies": {
-        "ws": "^8.16.0",
-        "fluent-ffmpeg": "^2.1.2"
+        "@line/bot-sdk": "^10.5.0",
+        "dotenv": "^17.2.3",
+        "fluent-ffmpeg": "^2.1.2",
+        "ws": "^8.16.0"
     }
 }

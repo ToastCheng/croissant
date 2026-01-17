@@ -1,9 +1,22 @@
+require('dotenv').config();
 const WebSocket = require('ws');
+const line = require('@line/bot-sdk');
 const { spawn } = require('child_process');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
+// create LINE SDK config from env variables
+const config = {
+    channelSecret: process.env.CHANNEL_SECRET,
+};
+
+// create LINE SDK client
+const client = new line.messagingApi.MessagingApiClient({
+    channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN
+});
+
+const HOSTNAME = process.env.PUBLIC_HOSTNAME || 'localhost:3000';
 const RECORDINGS_DIR = path.join(__dirname, 'recordings');
 const THUMBNAILS_DIR = path.join(__dirname, 'thumbnails');
 const MSG_DIR = path.join(__dirname, 'msg');
@@ -440,7 +453,29 @@ class StreamManager {
 
             ffmpeg.on('error', (err) => console.error('Preview generation error:', err));
             ffmpeg.on('exit', (code) => {
-                if (code === 0) console.log('Saved msg/cat_preview.jpg');
+                if (code === 0) {
+                    console.log('Saved msg/cat_preview.jpg');
+                    // Send Line Alert
+                    const messages = [
+                        {
+                            type: 'text',
+                            text: '發現麻嚕!!'
+                        },
+                        // {
+                        //     type: 'text',
+                        //     text: 'http://home.toastcheng.com/stream'
+                        // },
+                        {
+                            type: 'image',
+                            originalContentUrl: `https://${HOSTNAME}/msg/cat.jpg`,
+                            previewImageUrl: `https://${HOSTNAME}/msg/cat_preview.jpg`
+                        }
+                    ];
+
+                    client.broadcast({ messages })
+                        .then(() => console.log('Line broadcast sent'))
+                        .catch((err) => console.error('Line broadcast failed:', err));
+                }
                 else console.error('Preview generation failed code:', code);
             });
         });
