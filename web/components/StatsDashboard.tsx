@@ -15,7 +15,8 @@ type StatsData = {
 
 export default function StatsDashboard({ initialData }: { initialData?: StatsData }) {
   const [data, setData] = useState<StatsData | null>(initialData || null);
-  const [isContinuous, setIsContinuous] = useState(false);
+  const [isContinuous, setIsContinuous] = useState(true);
+  const [isDetectionEnabled, setIsDetectionEnabled] = useState(true);
 
   useEffect(() => {
     // Poll stats every 2 seconds
@@ -36,6 +37,7 @@ export default function StatsDashboard({ initialData }: { initialData?: StatsDat
       .then(res => res.json())
       .then(res => {
         setIsContinuous(res.mode === 'continuous');
+        if (res.detectionEnabled !== undefined) setIsDetectionEnabled(res.detectionEnabled);
       })
       .catch(err => console.error("Failed to fetch settings:", err));
 
@@ -60,6 +62,21 @@ export default function StatsDashboard({ initialData }: { initialData?: StatsDat
     }
   };
 
+  const toggleDetection = async () => {
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        body: JSON.stringify({ detectionEnabled: !isDetectionEnabled }),
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (res.ok) {
+        setIsDetectionEnabled(!isDetectionEnabled);
+      }
+    } catch (error) {
+      console.error("Failed to update detection:", error);
+    }
+  };
+
   if (!data) return <div className="text-white">Loading...</div>;
 
   return (
@@ -76,17 +93,32 @@ export default function StatsDashboard({ initialData }: { initialData?: StatsDat
           </div>
         </div>
 
-        <div className="flex items-center gap-4 bg-white/5 p-4 rounded-2xl border border-white/10 backdrop-blur-sm">
-          <span className="text-zinc-400 font-medium">Continuous Mode</span>
-          <label className="inline-flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              className="sr-only peer"
-              checked={isContinuous}
-              onChange={() => toggleMode()}
-            />
-            <div className="relative w-14 h-8 bg-zinc-600 peer-focus:outline-none rounded-full peer peer-checked:bg-green-500 after:content-[''] after:absolute after:top-1 after:start-1 after:bg-white after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:after:translate-x-6"></div>
-          </label>
+        <div className="flex gap-4">
+          <div className="flex items-center gap-4 bg-white/5 p-4 rounded-2xl border border-white/10 backdrop-blur-sm">
+            <span className="text-zinc-400 font-medium">Continuous Mode</span>
+            <label className="inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={isContinuous}
+                onChange={() => toggleMode()}
+              />
+              <div className="relative w-14 h-8 bg-zinc-600 peer-focus:outline-none rounded-full peer peer-checked:bg-green-500 after:content-[''] after:absolute after:top-1 after:start-1 after:bg-white after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:after:translate-x-6"></div>
+            </label>
+          </div>
+
+          <div className="flex items-center gap-4 bg-white/5 p-4 rounded-2xl border border-white/10 backdrop-blur-sm">
+            <span className="text-zinc-400 font-medium">Object Detection</span>
+            <label className="inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={isDetectionEnabled}
+                onChange={() => toggleDetection()}
+              />
+              <div className="relative w-14 h-8 bg-zinc-600 peer-focus:outline-none rounded-full peer peer-checked:bg-green-500 after:content-[''] after:absolute after:top-1 after:start-1 after:bg-white after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:after:translate-x-6"></div>
+            </label>
+          </div>
         </div>
       </header>
 

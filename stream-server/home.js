@@ -69,6 +69,7 @@ class StreamManager {
         this.isStreaming = false;
         this.mode = 'continuous'; // 'on-demand' or 'continuous'
         this.currentFrame = null;
+        this.detectionEnabled = true; // Default to enabled
 
         // Python Detection
         this.pythonProcess = null;
@@ -140,6 +141,8 @@ class StreamManager {
 
 
     sendFrameToPython(frame) {
+        if (!this.detectionEnabled) return; // Skip if disabled
+
         const now = Date.now();
         // Rate limit: 1000ms = 1fps (Reduced to save CPU)
         if (now - this.lastFrameTime < 1000) return;
@@ -199,6 +202,17 @@ class StreamManager {
         } else {
             this.stopRecording(); // Stop recording when switching to on-demand
             this.stopStreamIfNoClients();
+        }
+        return true;
+    }
+
+    setDetection(enabled) {
+        this.detectionEnabled = !!enabled;
+        console.log(`Detection enabled: ${this.detectionEnabled}`);
+        // If disabled, we might want to reset trackers? 
+        // For now, let's leave them, they will naturally expire or just stay stale (but safe).
+        if (!this.detectionEnabled) {
+            // Optional: clear state?
         }
         return true;
     }
@@ -629,20 +643,36 @@ const server = http.createServer((req, res) => {
     if (req.url === '/settings') {
         if (req.method === 'GET') {
             res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ mode: streamManager.mode }));
+            res.end(JSON.stringify({
+                mode: streamManager.mode,
+                detectionEnabled: streamManager.detectionEnabled
+            }));
             return;
         } else if (req.method === 'POST') {
             let body = '';
             req.on('data', chunk => body += chunk.toString());
             req.on('end', () => {
                 try {
-                    const { mode } = JSON.parse(body);
-                    if (streamManager.setMode(mode)) {
+                    const { mode, detectionEnabled } = JSON.parse(body);
+                    let updated = false;
+
+                    if (mode !== undefined) {
+                        if (streamManager.setMode(mode)) updated = true;
+                    }
+                    if (detectionEnabled !== undefined) {
+                        if (streamManager.setDetection(detectionEnabled)) updated = true;
+                    }
+
+                    if (updated) {
                         res.writeHead(200, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({ status: 'updated', mode: streamManager.mode }));
+                        res.end(JSON.stringify({
+                            status: 'updated',
+                            mode: streamManager.mode,
+                            detectionEnabled: streamManager.detectionEnabled
+                        }));
                     } else {
                         res.writeHead(400, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({ error: 'Invalid mode' }));
+                        res.end(JSON.stringify({ error: 'Invalid settings' }));
                     }
                 } catch (e) {
                     res.writeHead(400, { 'Content-Type': 'application/json' });
