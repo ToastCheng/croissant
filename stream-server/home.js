@@ -1,14 +1,27 @@
 const WebSocket = require('ws');
 const { spawn } = require('child_process');
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
+
+const RECORDINGS_DIR = path.join(__dirname, 'recordings');
+
+// Ensure recordings directory exists
+if (!fs.existsSync(RECORDINGS_DIR)) {
+    fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
+}
 
 // singleton class to manage the stream process and connected clients
 class StreamManager {
     constructor() {
         this.rpiProcess = null;
+        this.ffmpegProcess = null;
         this.clients = new Set(); // Set of WebSocket clients that want the stream
         this.isStreaming = false;
         this.mode = 'on-demand'; // 'on-demand' or 'continuous'
+
+        // Check for retention every minute
+        setInterval(() => this.rotateRecordings(), 60 * 1000);
     }
 
     setMode(mode) {
@@ -18,7 +31,12 @@ class StreamManager {
 
         if (this.mode === 'continuous') {
             this.startStreamIfNeeded();
+            // If already streaming but not recording (e.g. was on-demand), start recording now
+            if (this.isStreaming && !this.ffmpegProcess) {
+                this.startRecording();
+            }
         } else {
+            this.stopRecording(); // Stop recording when switching to on-demand
             this.stopStreamIfNoClients();
         }
         return true;
@@ -61,6 +79,10 @@ class StreamManager {
             '-o', '-'
         ]);
 
+        if (this.mode === 'continuous') {
+            this.startRecording();
+        }
+
         this.rpiProcess.on('error', (err) => {
             console.error('rpicam-vid error:', err.message);
             this.forceStop();
@@ -70,6 +92,7 @@ class StreamManager {
             console.log(`rpicam-vid exited with code ${code} and signal ${signal}`);
             this.rpiProcess = null;
             this.isStreaming = false;
+            this.stopRecording(); // Ensure ffmpeg stops if camera stops
         });
 
         this.rpiProcess.stderr.on('data', (data) => {
@@ -105,6 +128,62 @@ class StreamManager {
         });
     }
 
+    startRecording() {
+        if (this.ffmpegProcess) return;
+        if (!this.rpiProcess) return;
+
+        console.log('Starting recording...');
+
+        // ffmpeg arguments
+        const args = [
+            '-f', 'mjpeg',
+            '-framerate', '15',
+            '-i', '-',
+            '-c:v', 'libx264',
+            '-preset', 'ultrafast',
+            '-f', 'segment',
+            '-segment_time', '300', // 5 minutes
+            '-reset_timestamps', '1',
+            '-strftime', '1',
+            path.join(RECORDINGS_DIR, '%Y%m%d-%H%M%S.mp4')
+        ];
+
+        this.ffmpegProcess = spawn('ffmpeg', args);
+
+        // Pipe video stream
+        this.rpiProcess.stdout.pipe(this.ffmpegProcess.stdin);
+
+        this.ffmpegProcess.on('error', (err) => {
+            console.error('ffmpeg error:', err);
+        });
+
+        this.ffmpegProcess.stderr.on('data', (data) => {
+            // console.log(`ffmpeg: ${data}`); // Verbose
+        });
+
+        this.ffmpegProcess.on('exit', (code, signal) => {
+            console.log(`ffmpeg exited with code ${code}`);
+            this.ffmpegProcess = null;
+        });
+
+        // Trigger rotation check immediately
+        this.rotateRecordings();
+    }
+
+    stopRecording() {
+        if (this.ffmpegProcess) {
+            console.log('Stopping recording...');
+            this.ffmpegProcess.kill('SIGTERM'); // SIGTERM allows ffmpeg to close file cleanly?
+            // If piped input closes (which happens when rpiProcess dies), ffmpeg usually finishes.
+            // But if we want to stop ONLY recording, we kill it.
+            // Unpipe to prevent EPIPE errors on rpiProcess if we kill ffmpeg but keep camera?
+            if (this.rpiProcess) {
+                this.rpiProcess.stdout.unpipe(this.ffmpegProcess.stdin);
+            }
+            this.ffmpegProcess = null;
+        }
+    }
+
     stopStreamIfNoClients() {
         if (this.mode === 'continuous') return; // Never stop in continuous mode
 
@@ -115,11 +194,28 @@ class StreamManager {
     }
 
     forceStop() {
+        this.stopRecording();
         if (this.rpiProcess) {
             this.rpiProcess.kill('SIGKILL');
             this.rpiProcess = null;
         }
         this.isStreaming = false;
+    }
+
+    rotateRecordings() {
+        fs.readdir(RECORDINGS_DIR, (err, files) => {
+            if (err) return;
+            const mp4s = files.filter(f => f.endsWith('.mp4')).sort();
+            if (mp4s.length > 36) {
+                const toDelete = mp4s.slice(0, mp4s.length - 36);
+                toDelete.forEach(f => {
+                    const filePath = path.join(RECORDINGS_DIR, f);
+                    fs.unlink(filePath, (err) => {
+                        if (!err) console.log(`Deleted old recording: ${f}`);
+                    });
+                });
+            }
+        });
     }
 
     broadcast(data) {
@@ -149,6 +245,74 @@ const server = http.createServer((req, res) => {
     if (req.method === 'GET' && req.url === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }));
+        return;
+    }
+
+    // API: List replays
+    if (req.method === 'GET' && req.url === '/api/replays') {
+        fs.readdir(RECORDINGS_DIR, (err, files) => {
+            if (err) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Failed to read recordings' }));
+                return;
+            }
+            const recordings = files
+                .filter(f => f.endsWith('.mp4'))
+                .map(f => ({
+                    filename: f,
+                    url: `/recordings/${f}`
+                }))
+                .sort((a, b) => b.filename.localeCompare(a.filename)); // Newest first
+
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(recordings));
+        });
+        return;
+    }
+
+    // Serve recordings static files
+    if (req.method === 'GET' && req.url.startsWith('/recordings/')) {
+        const filename = req.url.split('/')[2]; // /recordings/xyz.mp4
+        const filePath = path.join(RECORDINGS_DIR, filename);
+
+        // Security check: ensure path is inside recordings dir
+        if (path.relative(RECORDINGS_DIR, filePath).startsWith('..')) {
+            res.writeHead(403);
+            res.end('Forbidden');
+            return;
+        }
+
+        if (fs.existsSync(filePath)) {
+            const stat = fs.statSync(filePath);
+            const fileSize = stat.size;
+            const range = req.headers.range;
+
+            if (range) {
+                const parts = range.replace(/bytes=/, "").split("-");
+                const start = parseInt(parts[0], 10);
+                const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+                const chunksize = (end - start) + 1;
+                const file = fs.createReadStream(filePath, { start, end });
+                const head = {
+                    'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+                    'Accept-Ranges': 'bytes',
+                    'Content-Length': chunksize,
+                    'Content-Type': 'video/mp4',
+                };
+                res.writeHead(206, head);
+                file.pipe(res);
+            } else {
+                const head = {
+                    'Content-Length': fileSize,
+                    'Content-Type': 'video/mp4',
+                };
+                res.writeHead(200, head);
+                fs.createReadStream(filePath).pipe(res);
+            }
+        } else {
+            res.writeHead(404);
+            res.end('Not Found');
+        }
         return;
     }
 

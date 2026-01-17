@@ -8,22 +8,22 @@ export default function Navbar() {
       </div>
       <div className="flex gap-8">
         <Link
-          href="/"
-          className="text-zinc-300 hover:text-white transition-colors duration-200 text-sm font-medium uppercase tracking-wide"
-        >
-          Home
-        </Link>
-        <Link
           href="/stats"
           className="text-zinc-300 hover:text-white transition-colors duration-200 text-sm font-medium uppercase tracking-wide"
         >
-          System Stats
+          System
         </Link>
         <Link
           href="/stream"
           className="text-zinc-300 hover:text-white transition-colors duration-200 text-sm font-medium uppercase tracking-wide"
         >
           Stream
+        </Link>
+        <Link
+          href="/replay"
+          className="text-zinc-300 hover:text-white transition-colors duration-200 text-sm font-medium uppercase tracking-wide"
+        >
+          Replay
         </Link>
       </div>
     </nav>

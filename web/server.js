@@ -29,6 +29,12 @@ app.prepare().then(() => {
         try {
             // Be sure to pass true to the parse function to get the query object
             const parsedUrl = parse(req.url, true)
+            const { pathname } = parsedUrl
+
+            if (pathname && pathname.startsWith('/recordings')) {
+                proxy.web(req, res, { target: 'http://localhost:8080' })
+                return
+            }
 
             // Allow Next.js to handle all other credentials
             handle(req, res, parsedUrl)
