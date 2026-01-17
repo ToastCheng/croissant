@@ -31,7 +31,7 @@ app.prepare().then(() => {
             const parsedUrl = parse(req.url, true)
             const { pathname } = parsedUrl
 
-            if (pathname && (pathname.startsWith('/recordings') || pathname.startsWith('/thumbnails'))) {
+            if (pathname && (pathname.startsWith('/recordings') || pathname.startsWith('/thumbnails') || pathname.startsWith('/msg'))) {
                 proxy.web(req, res, { target: 'http://localhost:8080' })
                 return
             }

@@ -6,6 +6,7 @@ const path = require('path');
 
 const RECORDINGS_DIR = path.join(__dirname, 'recordings');
 const THUMBNAILS_DIR = path.join(__dirname, 'thumbnails');
+const MSG_DIR = path.join(__dirname, 'msg');
 const PYTHON_EXEC = path.join(__dirname, '../image-server/venv/bin/python');
 const PYTHON_SCRIPT = path.join(__dirname, '../image-server/video_processor.py');
 const SOI = Buffer.from([0xff, 0xd8]);
@@ -17,6 +18,9 @@ if (!fs.existsSync(RECORDINGS_DIR)) {
 }
 if (!fs.existsSync(THUMBNAILS_DIR)) {
     fs.mkdirSync(THUMBNAILS_DIR, { recursive: true });
+}
+if (!fs.existsSync(MSG_DIR)) {
+    fs.mkdirSync(MSG_DIR, { recursive: true });
 }
 
 class StateTracker {
@@ -51,6 +55,7 @@ class StreamManager {
         this.clients = new Set(); // Set of WebSocket clients that want the stream
         this.isStreaming = false;
         this.mode = 'continuous'; // 'on-demand' or 'continuous'
+        this.currentFrame = null;
 
         // Python Detection
         this.pythonProcess = null;
@@ -90,7 +95,13 @@ class StreamManager {
                         const hasCat = data.detections.some(d => d.label === 'cat');
                         const hasPerson = data.detections.some(d => d.label === 'person');
 
-                        this.catTracker.update(hasCat);
+                        if (this.catTracker.update(hasCat)) {
+                            // State changed
+                            if (this.catTracker.isPresent) {
+                                console.log('Cat Detected! Capturing frame...');
+                                this.saveCatCapture();
+                            }
+                        }
                         this.personTracker.update(hasPerson);
 
                         // Only log specific detections if needed, or rely on state logs
@@ -141,7 +152,7 @@ class StreamManager {
                 const jpg = mp4.replace('.mp4', '.jpg');
                 const jpgPath = path.join(THUMBNAILS_DIR, jpg);
                 if (!fs.existsSync(jpgPath)) {
-                    console.log(`Generating thumbnail for ${mp4}...`);
+                    // console.log(`Generating thumbnail for ${mp4}...`);
                     const mp4Path = path.join(RECORDINGS_DIR, mp4);
                     // generate thumbnail at 1s mark
                     const ffmpeg = spawn('ffmpeg', [
@@ -395,11 +406,44 @@ class StreamManager {
     }
 
     broadcast(data) {
+        this.currentFrame = data;
         for (const client of this.clients) {
             if (client.readyState === WebSocket.OPEN) {
                 client.send(data);
             }
         }
+    }
+
+    saveCatCapture() {
+        if (!this.currentFrame) return;
+
+        const catPath = path.join(MSG_DIR, 'cat.jpg');
+        const previewPath = path.join(MSG_DIR, 'cat_preview.jpg');
+
+        // Save Raw Frame
+        fs.writeFile(catPath, this.currentFrame, (err) => {
+            if (err) {
+                console.error('Failed to save cat.jpg:', err);
+                return;
+            }
+            console.log('Saved msg/cat.jpg');
+
+            // Generate Preview (Resize & Compress)
+            // Scale width to 640, keep aspect ratio. q:v 5 for quality.
+            const ffmpeg = spawn('ffmpeg', [
+                '-y',
+                '-i', catPath,
+                '-vf', 'scale=640:-1',
+                '-q:v', '5',
+                previewPath
+            ]);
+
+            ffmpeg.on('error', (err) => console.error('Preview generation error:', err));
+            ffmpeg.on('exit', (code) => {
+                if (code === 0) console.log('Saved msg/cat_preview.jpg');
+                else console.error('Preview generation failed code:', code);
+            });
+        });
     }
 }
 
@@ -515,6 +559,31 @@ const server = http.createServer((req, res) => {
         } else {
             // Prevent browser from caching 404s so it retries when file is created
             res.setHeader('Cache-Control', 'no-store');
+            res.writeHead(404);
+            res.end('Not Found');
+        }
+        return;
+    }
+
+    // Serve msg images (JPG)
+    if (req.method === 'GET' && req.url.startsWith('/msg/')) {
+        const filename = req.url.split('/')[2];
+        const filePath = path.join(MSG_DIR, filename);
+
+        if (path.relative(MSG_DIR, filePath).startsWith('..')) {
+            res.writeHead(403); res.end('Forbidden'); return;
+        }
+
+        if (fs.existsSync(filePath)) {
+            const stat = fs.statSync(filePath);
+            res.writeHead(200, {
+                'Content-Length': stat.size,
+                'Content-Type': 'image/jpeg',
+                // No caching for these as they update frequently
+                'Cache-Control': 'no-store'
+            });
+            fs.createReadStream(filePath).pipe(res);
+        } else {
             res.writeHead(404);
             res.end('Not Found');
         }
