@@ -44,7 +44,7 @@ export default function ReplayPage() {
                     <div className="text-zinc-500 text-lg">No recordings found.</div>
                 ) : (
                     <div className="grid grid-cols-3 gap-2 md:grid-cols-3 lg:grid-cols-4 md:gap-6">
-                        {recordings.map((rec) => (
+                        {recordings.filter(rec => rec.thumbnailUrl).map((rec) => (
                             <Link
                                 key={rec.filename}
                                 href={`/replay/${rec.filename}`}
