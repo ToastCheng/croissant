@@ -20,8 +20,38 @@ class StreamManager {
         this.isStreaming = false;
         this.mode = 'on-demand'; // 'on-demand' or 'continuous'
 
-        // Check for retention every minute
-        setInterval(() => this.rotateRecordings(), 60 * 1000);
+        // Check for retention and thumbnails every minute
+        setInterval(() => {
+            this.rotateRecordings();
+            this.ensureThumbnails();
+        }, 60 * 1000);
+    }
+
+    ensureThumbnails() {
+        fs.readdir(RECORDINGS_DIR, (err, files) => {
+            if (err) return;
+            files.filter(f => f.endsWith('.mp4')).forEach(mp4 => {
+                const jpg = mp4.replace('.mp4', '.jpg');
+                const jpgPath = path.join(RECORDINGS_DIR, jpg);
+                if (!fs.existsSync(jpgPath)) {
+                    console.log(`Generating thumbnail for ${mp4}...`);
+                    const mp4Path = path.join(RECORDINGS_DIR, mp4);
+                    // generate thumbnail at 1s mark
+                    const ffmpeg = spawn('ffmpeg', [
+                        '-y',
+                        '-i', mp4Path,
+                        '-ss', '00:00:01',
+                        '-vframes', '1',
+                        jpgPath
+                    ]);
+                    ffmpeg.on('error', (err) => console.error('Thumbnail generation error:', err));
+                    ffmpeg.on('exit', (code) => {
+                        if (code === 183) return; // already exists
+                        if (code !== 0) console.error(`Failed to generate thumbnail for ${mp4} (code ${code})`);
+                    });
+                }
+            });
+        });
     }
 
     setMode(mode) {
@@ -211,7 +241,12 @@ class StreamManager {
                 toDelete.forEach(f => {
                     const filePath = path.join(RECORDINGS_DIR, f);
                     fs.unlink(filePath, (err) => {
-                        if (!err) console.log(`Deleted old recording: ${f}`);
+                        if (!err) {
+                            console.log(`Deleted old recording: ${f}`);
+                            // Delete thumbnail too
+                            const thumbPath = filePath.replace('.mp4', '.jpg');
+                            fs.unlink(thumbPath, () => { });
+                        }
                     });
                 });
             }
@@ -260,7 +295,8 @@ const server = http.createServer((req, res) => {
                 .filter(f => f.endsWith('.mp4'))
                 .map(f => ({
                     filename: f,
-                    url: `/recordings/${f}`
+                    url: `/recordings/${f}`,
+                    thumbnailUrl: `/thumbnails/${f.replace('.mp4', '.jpg')}`
                 }))
                 .sort((a, b) => b.filename.localeCompare(a.filename)); // Newest first
 
@@ -270,9 +306,9 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    // Serve recordings static files
-    if (req.method === 'GET' && req.url.startsWith('/recordings/')) {
-        const filename = req.url.split('/')[2]; // /recordings/xyz.mp4
+    // Serve recordings and thumbnails
+    if (req.method === 'GET' && (req.url.startsWith('/recordings/') || req.url.startsWith('/thumbnails/'))) {
+        const filename = req.url.split('/')[2];
         const filePath = path.join(RECORDINGS_DIR, filename);
 
         // Security check: ensure path is inside recordings dir
@@ -285,6 +321,16 @@ const server = http.createServer((req, res) => {
         if (fs.existsSync(filePath)) {
             const stat = fs.statSync(filePath);
             const fileSize = stat.size;
+
+            if (filename.endsWith('.jpg')) {
+                res.writeHead(200, {
+                    'Content-Length': fileSize,
+                    'Content-Type': 'image/jpeg'
+                });
+                fs.createReadStream(filePath).pipe(res);
+                return;
+            }
+
             const range = req.headers.range;
 
             if (range) {

@@ -7,6 +7,7 @@ import { FaPlay } from "react-icons/fa6";
 type Recording = {
     filename: string;
     url: string;
+    thumbnailUrl: string;
 };
 
 export default function ReplayPage() {
@@ -50,12 +51,11 @@ export default function ReplayPage() {
                                 className="group relative block bg-zinc-900 rounded-xl overflow-hidden border border-zinc-800 hover:border-zinc-700 transition-colors"
                             >
                                 <div className="aspect-video relative">
-                                    {/* Use video as thumbnail. Muted, preload metadata. */}
-                                    <video
-                                        src={`/recordings/${rec.filename}#t=0.1`}
+                                    <img
+                                        src={rec.thumbnailUrl || `/recordings/${rec.filename}`}
+                                        alt={rec.filename}
                                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                                        preload="metadata"
-                                        muted
+                                        loading="lazy"
                                     />
                                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100 duration-300">
                                         <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center">

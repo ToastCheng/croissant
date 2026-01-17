@@ -8,6 +8,10 @@ const nextConfig: NextConfig = {
         source: '/recordings/:path*',
         destination: 'http://localhost:8080/recordings/:path*',
       },
+      {
+        source: '/thumbnails/:path*',
+        destination: 'http://localhost:8080/thumbnails/:path*',
+      },
     ]
   },
 };
