@@ -42,7 +42,7 @@ export default function ReplayPage() {
                 {recordings.length === 0 ? (
                     <div className="text-zinc-500 text-lg">No recordings found.</div>
                 ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-3 gap-2 md:grid-cols-3 lg:grid-cols-4 md:gap-6">
                         {recordings.map((rec) => (
                             <Link
                                 key={rec.filename}
@@ -63,8 +63,8 @@ export default function ReplayPage() {
                                         </div>
                                     </div>
                                 </div>
-                                <div className="p-4">
-                                    <h2 className="text-sm font-mono text-zinc-300 truncate">{rec.filename}</h2>
+                                <div className="p-2 md:p-4">
+                                    <h2 className="text-[10px] md:text-sm font-mono text-zinc-300 truncate">{rec.filename}</h2>
                                 </div>
                             </Link>
                         ))}
