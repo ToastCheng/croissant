@@ -125,6 +125,16 @@ The server handles termination signals (`SIGINT`, `SIGTERM`) to ensure data inte
 2. It signals the `ffmpeg` process to finish the current recording segment.
 3. It waits for `ffmpeg` to exit cleanly, ensuring the MP4 file trailer is written and the file is not corrupted.
 
+### Image Server (Object Detection)
+
+The system includes a persistent Python process for real-time object detection (YOLO v11).
+
+*   **Architecture**: `stream-server` spawns the Python process and pipes raw JPEG frames to its standard input (stdin) for low-latency processing.
+*   **Setup**: Requires a Python virtual environment in `image-server/venv`. The server uses `image-server/venv/bin/python` to ensure isolation.
+*   **Logic**:
+    *   Detects "cat" and "person".
+    *   Updates `catPresent` and `personPresent` states with a **2-second confirmation window** to filter out flickering detections.
+
 ## Technical Details
 
 ### MJPEG Stream Parsing
