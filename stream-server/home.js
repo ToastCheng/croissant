@@ -5,10 +5,14 @@ const fs = require('fs');
 const path = require('path');
 
 const RECORDINGS_DIR = path.join(__dirname, 'recordings');
+const THUMBNAILS_DIR = path.join(__dirname, 'thumbnails');
 
-// Ensure recordings directory exists
+// Ensure directories exist
 if (!fs.existsSync(RECORDINGS_DIR)) {
     fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
+}
+if (!fs.existsSync(THUMBNAILS_DIR)) {
+    fs.mkdirSync(THUMBNAILS_DIR, { recursive: true });
 }
 
 // singleton class to manage the stream process and connected clients
@@ -18,7 +22,7 @@ class StreamManager {
         this.ffmpegProcess = null;
         this.clients = new Set(); // Set of WebSocket clients that want the stream
         this.isStreaming = false;
-        this.mode = 'on-demand'; // 'on-demand' or 'continuous'
+        this.mode = 'continuous'; // 'on-demand' or 'continuous'
 
         // Check for retention and thumbnails every minute
         setInterval(() => {
@@ -32,7 +36,7 @@ class StreamManager {
             if (err) return;
             files.filter(f => f.endsWith('.mp4')).forEach(mp4 => {
                 const jpg = mp4.replace('.mp4', '.jpg');
-                const jpgPath = path.join(RECORDINGS_DIR, jpg);
+                const jpgPath = path.join(THUMBNAILS_DIR, jpg);
                 if (!fs.existsSync(jpgPath)) {
                     console.log(`Generating thumbnail for ${mp4}...`);
                     const mp4Path = path.join(RECORDINGS_DIR, mp4);
@@ -266,7 +270,7 @@ class StreamManager {
                         if (!err) {
                             console.log(`Deleted old recording: ${f}`);
                             // Delete thumbnail too
-                            const thumbPath = filePath.replace('.mp4', '.jpg');
+                            const thumbPath = path.join(THUMBNAILS_DIR, f.replace('.mp4', '.jpg'));
                             fs.unlink(thumbPath, () => { });
                         }
                     });
@@ -315,11 +319,15 @@ const server = http.createServer((req, res) => {
             }
             const recordings = files
                 .filter(f => f.endsWith('.mp4'))
-                .map(f => ({
-                    filename: f,
-                    url: `/recordings/${f}`,
-                    thumbnailUrl: `/thumbnails/${f.replace('.mp4', '.jpg')}`
-                }))
+                .map(f => {
+                    const thumbName = f.replace('.mp4', '.jpg');
+                    const hasThumb = fs.existsSync(path.join(THUMBNAILS_DIR, thumbName));
+                    return {
+                        filename: f,
+                        url: `/recordings/${f}`,
+                        thumbnailUrl: hasThumb ? `/thumbnails/${thumbName}` : null
+                    };
+                })
                 .sort((a, b) => b.filename.localeCompare(a.filename)); // Newest first
 
             res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -328,31 +336,18 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    // Serve recordings and thumbnails
-    if (req.method === 'GET' && (req.url.startsWith('/recordings/') || req.url.startsWith('/thumbnails/'))) {
+    // Serve recordings (MP4)
+    if (req.method === 'GET' && req.url.startsWith('/recordings/')) {
         const filename = req.url.split('/')[2];
         const filePath = path.join(RECORDINGS_DIR, filename);
 
-        // Security check: ensure path is inside recordings dir
         if (path.relative(RECORDINGS_DIR, filePath).startsWith('..')) {
-            res.writeHead(403);
-            res.end('Forbidden');
-            return;
+            res.writeHead(403); res.end('Forbidden'); return;
         }
 
         if (fs.existsSync(filePath)) {
             const stat = fs.statSync(filePath);
             const fileSize = stat.size;
-
-            if (filename.endsWith('.jpg')) {
-                res.writeHead(200, {
-                    'Content-Length': fileSize,
-                    'Content-Type': 'image/jpeg'
-                });
-                fs.createReadStream(filePath).pipe(res);
-                return;
-            }
-
             const range = req.headers.range;
 
             if (range) {
@@ -378,6 +373,33 @@ const server = http.createServer((req, res) => {
                 fs.createReadStream(filePath).pipe(res);
             }
         } else {
+            res.writeHead(404);
+            res.end('Not Found');
+        }
+        return;
+    }
+
+    // Serve thumbnails (JPG)
+    if (req.method === 'GET' && req.url.startsWith('/thumbnails/')) {
+        const filename = req.url.split('/')[2];
+        const filePath = path.join(THUMBNAILS_DIR, filename);
+
+        if (path.relative(THUMBNAILS_DIR, filePath).startsWith('..')) {
+            res.writeHead(403); res.end('Forbidden'); return;
+        }
+
+        if (fs.existsSync(filePath)) {
+            const stat = fs.statSync(filePath);
+            res.writeHead(200, {
+                'Content-Length': stat.size,
+                'Content-Type': 'image/jpeg',
+                // Cache valid thumbnails reasonably long as they don't change
+                'Cache-Control': 'public, max-age=3600'
+            });
+            fs.createReadStream(filePath).pipe(res);
+        } else {
+            // Prevent browser from caching 404s so it retries when file is created
+            res.setHeader('Cache-Control', 'no-store');
             res.writeHead(404);
             res.end('Not Found');
         }
