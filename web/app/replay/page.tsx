@@ -50,9 +50,9 @@ export default function ReplayPage() {
                                 href={`/replay/${rec.filename}`}
                                 className="group relative block bg-zinc-900 rounded-xl overflow-hidden border border-zinc-800 hover:border-zinc-700 transition-colors"
                             >
-                                <div className="aspect-video relative">
+                                <div className="aspect-video relative bg-zinc-800">
                                     <img
-                                        src={rec.thumbnailUrl || `/recordings/${rec.filename}`}
+                                        src={rec.thumbnailUrl || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25' viewBox='0 0 800 450'%3E%3Crect fill='%2327272a' width='800' height='450'/%3E%3Ctext fill='%2371717a' font-family='sans-serif' font-size='30' dy='10.5' font-weight='bold' x='50%25' y='50%25' text-anchor='middle'%3EProcessing...%3C/text%3E%3C/svg%3E"}
                                         alt={rec.filename}
                                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                                         loading="lazy"
