@@ -141,8 +141,8 @@ class StreamManager {
 
     sendFrameToPython(frame) {
         const now = Date.now();
-        // Rate limit: 200ms = 5fps
-        if (now - this.lastFrameTime < 200) return;
+        // Rate limit: 1000ms = 1fps (Reduced to save CPU)
+        if (now - this.lastFrameTime < 1000) return;
 
         this.lastFrameTime = now;
 

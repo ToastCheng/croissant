@@ -49,7 +49,7 @@ def main():
 
             # 4. Run Inference
             # stream=True is efficient for video
-            results = model.predict(img, verbose=False, classes=[0, 15]) # 0=person, 15=cat
+            results = model.predict(img, verbose=False, classes=[0, 15], imgsz=320) # 0=person, 15=cat
 
             # 5. Process Results
             detections = []
