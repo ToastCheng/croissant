@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 export default function Home() {
   return (
@@ -24,9 +25,11 @@ export default function Home() {
         </p>
 
         <div className="pt-8">
-          <button className="px-8 py-3 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white font-medium transition-all duration-300 transform hover:scale-105 hover:shadow-[0_0_20px_rgba(255,255,255,0.3)]">
-            Explore Dashboard
-          </button>
+          <Link href="/stream">
+            <button className="px-10 py-4 rounded-full bg-green-500/20 hover:bg-green-500/40 backdrop-blur-md border border-green-500/50 text-green-100 font-bold text-xl transition-all duration-300 transform hover:scale-105 hover:shadow-[0_0_30px_rgba(34,197,94,0.4)]">
+              Watch Live!
+            </button>
+          </Link>
         </div>
       </div>
 
