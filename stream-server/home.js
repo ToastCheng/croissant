@@ -19,7 +19,7 @@ const client = new line.messagingApi.MessagingApiClient({
 const HOSTNAME = process.env.PUBLIC_HOSTNAME || 'localhost:3000';
 const RECORDINGS_DIR = path.join(__dirname, 'recordings');
 const THUMBNAILS_DIR = path.join(__dirname, 'thumbnails');
-const MSG_DIR = path.join(__dirname, 'msg');
+const IMAGES_DIR = path.join(__dirname, 'images');
 const PYTHON_EXEC = path.join(__dirname, '../image-server/venv/bin/python');
 const PYTHON_SCRIPT = path.join(__dirname, '../image-server/video_processor.py');
 const SOI = Buffer.from([0xff, 0xd8]);
@@ -32,8 +32,8 @@ if (!fs.existsSync(RECORDINGS_DIR)) {
 if (!fs.existsSync(THUMBNAILS_DIR)) {
     fs.mkdirSync(THUMBNAILS_DIR, { recursive: true });
 }
-if (!fs.existsSync(MSG_DIR)) {
-    fs.mkdirSync(MSG_DIR, { recursive: true });
+if (!fs.existsSync(IMAGES_DIR)) {
+    fs.mkdirSync(IMAGES_DIR, { recursive: true });
 }
 
 class StateTracker {
@@ -285,11 +285,11 @@ class StreamManager {
             let offset = 0;
             while (true) {
                 // 0xFF, 0xD8 is the Start of Image (SOI) marker for JPEG
-                const start = buffer.indexOf(Buffer.from([0xFF, 0xD8]), offset);
+                const start = buffer.indexOf(SOI, offset);
                 if (start === -1) break;
 
                 // 0xFF, 0xD9 is the End of Image (EOI) marker for JPEG
-                const end = buffer.indexOf(Buffer.from([0xFF, 0xD9]), start + 2);
+                const end = buffer.indexOf(EOI, start + 2);
                 if (end === -1) break;
 
                 const frame = buffer.subarray(start, end + 2);
@@ -444,54 +444,43 @@ class StreamManager {
     saveCatCapture() {
         if (!this.currentFrame) return;
 
-        const catPath = path.join(MSG_DIR, 'cat.jpg');
-        const previewPath = path.join(MSG_DIR, 'cat_preview.jpg');
+        const now = new Date();
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        const hh = String(now.getHours()).padStart(2, '0');
+        const min = String(now.getMinutes()).padStart(2, '0');
+        const ss = String(now.getSeconds()).padStart(2, '0');
+        // Format: YYYYMMDD-HHMMSS
+        const timestamp = `${yyyy}${mm}${dd}-${hh}${min}${ss}`;
+
+        const filename = `${timestamp}.jpg`;
+        const catPath = path.join(IMAGES_DIR, filename);
 
         // Save Raw Frame
         fs.writeFile(catPath, this.currentFrame, (err) => {
             if (err) {
-                console.error('Failed to save cat.jpg:', err);
+                console.error(`Failed to save ${filename}:`, err);
                 return;
             }
-            console.log('Saved msg/cat.jpg');
+            console.log(`Saved images/${filename}`);
 
-            // Generate Preview (Resize & Compress)
-            // Scale width to 640, keep aspect ratio. q:v 5 for quality.
-            const ffmpeg = spawn('ffmpeg', [
-                '-y',
-                '-i', catPath,
-                '-vf', 'scale=640:-1',
-                '-q:v', '5',
-                previewPath
-            ]);
-
-            ffmpeg.on('error', (err) => console.error('Preview generation error:', err));
-            ffmpeg.on('exit', (code) => {
-                if (code === 0) {
-                    console.log('Saved msg/cat_preview.jpg');
-                    // Send Line Alert
-                    const messages = [
-                        {
-                            type: 'text',
-                            text: '發現麻嚕!!'
-                        },
-                        // {
-                        //     type: 'text',
-                        //     text: 'http://home.toastcheng.com/stream'
-                        // },
-                        {
-                            type: 'image',
-                            originalContentUrl: `https://${HOSTNAME}/msg/cat.jpg`,
-                            previewImageUrl: `https://${HOSTNAME}/msg/cat_preview.jpg`
-                        }
-                    ];
-
-                    client.broadcast({ messages })
-                        .then(() => console.log('Line broadcast sent'))
-                        .catch((err) => console.error('Line broadcast failed:', err));
+            // Send Line Alert
+            const messages = [
+                {
+                    type: 'text',
+                    text: '發現麻嚕!!'
+                },
+                {
+                    type: 'image',
+                    originalContentUrl: `https://${HOSTNAME}/images/${filename}`,
+                    previewImageUrl: `https://${HOSTNAME}/images/${filename}`
                 }
-                else console.error('Preview generation failed code:', code);
-            });
+            ];
+
+            client.broadcast({ messages })
+                .then(() => console.log('Line broadcast sent'))
+                .catch((err) => console.error('Line broadcast failed:', err));
         });
     }
 }
@@ -615,11 +604,11 @@ const server = http.createServer((req, res) => {
     }
 
     // Serve msg images (JPG)
-    if (req.method === 'GET' && req.url.startsWith('/msg/')) {
+    if (req.method === 'GET' && req.url.startsWith('/images/')) {
         const filename = req.url.split('/')[2];
-        const filePath = path.join(MSG_DIR, filename);
+        const filePath = path.join(IMAGES_DIR, filename);
 
-        if (path.relative(MSG_DIR, filePath).startsWith('..')) {
+        if (path.relative(IMAGES_DIR, filePath).startsWith('..')) {
             res.writeHead(403); res.end('Forbidden'); return;
         }
 
