@@ -628,8 +628,56 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // API: List images (supports ?page=1&limit=50)
+    if (req.method === 'GET' && req.url.startsWith('/api/images')) {
+        const urlParts = req.url.split('?');
+        const query = new URLSearchParams(urlParts[1]);
+        const page = parseInt(query.get('page'));
+        const limit = parseInt(query.get('limit'));
+
+        fs.readdir(IMAGES_DIR, (err, files) => {
+            if (err) {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(page ? { images: [], total: 0 } : []));
+                return;
+            }
+
+            let allImages = files
+                .filter(f => f.endsWith('.jpg'))
+                .sort((a, b) => b.localeCompare(a)); // Newest first
+
+            // If pagination params are present, return paginated object
+            if (!isNaN(page) && !isNaN(limit)) {
+                const total = allImages.length;
+                const totalPages = Math.ceil(total / limit);
+                const startIndex = (page - 1) * limit;
+                const sliced = allImages.slice(startIndex, startIndex + limit).map(f => ({
+                    filename: f,
+                    url: `/images/${f}`
+                }));
+
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    images: sliced,
+                    total: total,
+                    page: page,
+                    totalPages: totalPages
+                }));
+            } else {
+                // Default behavior: return top 5 array (legacy/home support)
+                const sliced = allImages.slice(0, 5).map(f => ({
+                    filename: f,
+                    url: `/images/${f}`
+                }));
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(sliced));
+            }
+        });
+        return;
+    }
+
     // Settings endpoint
-    if (req.url === '/settings') {
+    if (req.url === '/api/settings') {
         if (req.method === 'GET') {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({

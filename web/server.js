@@ -34,7 +34,8 @@ app.prepare().then(() => {
             if (pathname && (
                 pathname.startsWith('/recordings') ||
                 pathname.startsWith('/thumbnails') ||
-                pathname.startsWith('/images')
+                pathname.startsWith('/images') ||
+                pathname.startsWith('/api')
             )) {
                 proxy.web(req, res, { target: 'http://localhost:8080' })
                 return

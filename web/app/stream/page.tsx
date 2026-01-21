@@ -181,6 +181,12 @@ export default function StreamPage() {
                 </button>
             </div>
 
+            <div className="mt-8">
+                <a href="/gallery" className="text-zinc-400 hover:text-white underline decoration-zinc-600 hover:decoration-white underline-offset-4 transition-all">
+                    View Highlights Gallery
+                </a>
+            </div>
+
             <div className="mt-4 text-xs text-zinc-500 font-mono">
                 Status: {isConnected ? 'Connected' : 'Disconnected'} | Streaming: {isStreaming ? 'Active' : 'Idle'}
             </div>
