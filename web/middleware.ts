@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export function middleware(request: NextRequest) {
-    const session = request.cookies.get('auth_session')
+    const token = request.cookies.get('auth_token')
     const { pathname } = request.nextUrl
 
     // Allow access to login page and public assets
@@ -15,7 +15,9 @@ export function middleware(request: NextRequest) {
     }
 
     // Check if user is authenticated
-    if (!session) {
+    // We check if the token exists AND matches the environment password
+    const password = process.env.PASSWORD;
+    if (!token || (password && token.value !== password)) {
         const loginUrl = new URL('/login', request.url)
         return NextResponse.redirect(loginUrl)
     }

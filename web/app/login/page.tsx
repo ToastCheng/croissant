@@ -11,7 +11,8 @@ export default function LoginPage() {
 
         if (password === correctPassword) {
             const cookieStore = await cookies();
-            cookieStore.set('auth_session', 'true', {
+            // Store the actual password as the token for simple shared-secret auth
+            cookieStore.set('auth_token', password as string, {
                 httpOnly: true,
                 secure: process.env.NODE_ENV === 'production',
                 path: '/',
