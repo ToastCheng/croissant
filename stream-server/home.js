@@ -485,7 +485,111 @@ class StreamManager {
     }
 }
 
+class EspStreamManager {
+    constructor(url) {
+        this.url = url;
+        this.currentFrame = null;
+        this.clients = new Set();
+        this.request = null;
+        this.retryTimeout = null;
+
+        // Start connection
+        this.connect();
+    }
+
+    connect() {
+        console.log(`Connecting to ESP32 stream at ${this.url}...`);
+        this.request = http.get(this.url, (res) => {
+            console.log(`ESP32 Connected. Status: ${res.statusCode}`);
+
+            let buffer = Buffer.alloc(0);
+            const boundary = '--123456789000000000000987654321'; // Standard ESP32/OV2640 boundary
+
+            res.on('data', (chunk) => {
+                buffer = Buffer.concat([buffer, chunk]);
+
+                // Find start and end of JPEG
+                let offset = 0;
+                while (true) {
+                    const start = buffer.indexOf(SOI, offset);
+                    if (start === -1) break;
+
+                    const end = buffer.indexOf(EOI, start + 2);
+                    if (end === -1) break;
+
+                    // Extract full JPEG Frame
+                    const frame = buffer.subarray(start, end + 2);
+                    this.currentFrame = frame;
+                    this.broadcast(frame);
+
+                    offset = end + 2;
+                }
+
+                if (offset > 0) {
+                    buffer = buffer.subarray(offset);
+                }
+            });
+
+            res.on('end', () => {
+                console.log('ESP32 Stream ended. Reconnecting...');
+                this.scheduleReconnect();
+            });
+
+        }).on('error', (err) => {
+            console.error('ESP32 Connection Error:', err.message);
+            this.scheduleReconnect();
+        });
+    }
+
+    scheduleReconnect() {
+        if (this.retryTimeout) clearTimeout(this.retryTimeout);
+        this.retryTimeout = setTimeout(() => this.connect(), 5000);
+    }
+
+    addClient(res) {
+        // Prepare Response Header for MJPEG
+        res.writeHead(200, {
+            'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
+            'Connection': 'keep-alive',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+        });
+
+        this.clients.add(res);
+        console.log(`ESP32 Viewer added. Total: ${this.clients.size}`);
+
+        res.on('close', () => {
+            this.clients.delete(res);
+            console.log(`ESP32 Viewer removed. Total: ${this.clients.size}`);
+        });
+
+        // If we have a frame ready, send it immediately
+        if (this.currentFrame) {
+            this.sendFrameToClient(res, this.currentFrame);
+        }
+    }
+
+    broadcast(frame) {
+        for (const client of this.clients) {
+            this.sendFrameToClient(client, frame);
+        }
+    }
+
+    sendFrameToClient(res, frame) {
+        try {
+            res.write(`--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ${frame.length}\r\n\r\n`);
+            res.write(frame);
+            res.write('\r\n');
+        } catch (e) {
+            console.error('Error sending to ESP32 viewer:', e);
+            this.clients.delete(res);
+        }
+    }
+}
+
 const streamManager = new StreamManager();
+const espStreamManager = new EspStreamManager('http://192.168.1.114/stream');
 
 const server = http.createServer((req, res) => {
     // CORS headers
@@ -539,6 +643,12 @@ const server = http.createServer((req, res) => {
         }
     }
     // ----------------------
+
+    // API: ESP32 Stream
+    if (req.method === 'GET' && req.url === '/api/esp32') {
+        espStreamManager.addClient(res);
+        return;
+    }
 
     // API: List replays
     if (req.method === 'GET' && req.url === '/api/replays') {
