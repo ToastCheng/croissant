@@ -19,6 +19,7 @@ import createSettingsRouter from './api/settings.js';
 
 // Constants
 import { RECORDINGS_DIR, THUMBNAILS_DIR, IMAGES_DIR } from './utils/constants.js';
+import logger from './utils/logger.js';
 
 // --- INITIALIZATION ---
 const app = express();
@@ -89,44 +90,44 @@ server.on('upgrade', (request, socket, head) => {
 });
 
 wss.on('connection', (ws) => {
-    console.log('RPi Client connected');
+    logger.info('RPi Client connected');
     ws.on('message', (message) => {
         const msg = message.toString();
         if (msg === 'start') rpiStreamManager.addClient(ws);
         else if (msg === 'stop') rpiStreamManager.removeClient(ws);
     });
     ws.on('close', () => {
-        console.log('RPi Client disconnected');
+        logger.info('RPi Client disconnected');
         rpiStreamManager.removeClient(ws);
     });
 });
 
 wssEsp.on('connection', (ws) => {
-    console.log('ESP32 Client connected');
+    logger.info('ESP32 Client connected');
     ws.on('message', (message) => {
         const msg = message.toString();
         if (msg === 'start') espStreamManager.addClient(ws);
         else if (msg === 'stop') espStreamManager.removeClient(ws);
     });
     ws.on('close', () => {
-        console.log('ESP32 Client disconnected');
+        logger.info('ESP32 Client disconnected');
         espStreamManager.removeClient(ws);
     });
 });
 
 // --- SERVER START ---
 server.listen(8080, () => {
-    console.log('Express Server listening on port 8080');
+    logger.info('Express Server listening on port 8080');
 });
 
 // Robust cleanup
 const cleanup = async () => {
-    console.log('Server shutting down...');
+    logger.info('Server shutting down...');
     server.close();
     wss.close();
     wssEsp.close();
     await rpiStreamManager.forceStop();
-    console.log('Cleanup complete. Exiting.');
+    logger.info('Cleanup complete. Exiting.');
     process.exit(0);
 };
 

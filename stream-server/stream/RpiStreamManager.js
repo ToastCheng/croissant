@@ -15,6 +15,7 @@ import {
     SOI,
     EOI
 } from '../utils/constants.js';
+import logger from '../utils/logger.js';
 
 // Ensure directories exist
 if (!fs.existsSync(RECORDINGS_DIR)) fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
@@ -42,7 +43,7 @@ class StateTracker {
         } else if (this.potentialState !== this.isPresent) {
             if (Date.now() - this.firstTransitionTime >= this.delayMs) {
                 this.isPresent = this.potentialState;
-                console.log(`State Update: ${this.label}Present = ${this.isPresent}`);
+                logger.info(`State Update: ${this.label}Present = ${this.isPresent}`);
                 return true;
             }
         }
@@ -81,7 +82,7 @@ export class RpiStreamManager extends StreamManager {
     startDetection() {
         if (this.pythonProcess) return;
 
-        console.log('Starting Python Detection Service...');
+        logger.info('Starting Python Detection Service...');
         try {
             this.pythonProcess = spawn(PYTHON_EXEC, [PYTHON_SCRIPT]);
             const rl = createInterface({ input: this.pythonProcess.stdout });
@@ -95,24 +96,24 @@ export class RpiStreamManager extends StreamManager {
 
                         if (this.catTracker.update(hasCat)) {
                             if (this.catTracker.isPresent) {
-                                console.log('Cat Detected! Capturing frame...');
+                                logger.info('Cat Detected! Capturing frame...');
                                 this.saveCatCapture();
                             }
                         }
                         this.personTracker.update(hasPerson);
                     }
                 } catch (e) {
-                    console.log('Python:', line);
+                    logger.info(`Python: ${line}`);
                 }
             });
 
-            this.pythonProcess.stderr.on('data', d => console.error('Python Error:', d.toString()));
+            this.pythonProcess.stderr.on('data', d => logger.error(`Python Error: ${d.toString()}`));
             this.pythonProcess.on('exit', () => {
                 this.pythonProcess = null;
-                console.log('Python detection stopped');
+                logger.info('Python detection stopped');
             });
         } catch (error) {
-            console.error('Failed to spawn python process:', error);
+            logger.error(`Failed to spawn python process: ${error}`);
         }
     }
 
@@ -144,9 +145,9 @@ export class RpiStreamManager extends StreamManager {
                     const ffmpeg = spawn('ffmpeg', [
                         '-y', '-i', mp4Path, '-ss', '00:00:01', '-vframes', '1', jpgPath
                     ]);
-                    ffmpeg.on('error', (err) => console.error('Thumbnail generation error:', err));
+                    ffmpeg.on('error', (err) => logger.error(`Thumbnail generation error: ${err}`));
                     ffmpeg.on('exit', (code) => {
-                        if (code !== 183 && code !== 0) console.error(`Failed to generate thumbnail for ${mp4} (code ${code})`);
+                        if (code !== 183 && code !== 0) logger.error(`Failed to generate thumbnail for ${mp4} (code ${code})`);
                     });
                 }
             });
@@ -155,7 +156,7 @@ export class RpiStreamManager extends StreamManager {
 
     setMode(mode) {
         if (mode !== 'on-demand' && mode !== 'continuous') return false;
-        console.log(`Switching mode to: ${mode}`);
+        logger.info(`Switching mode to: ${mode}`);
         this.mode = mode;
 
         if (this.mode === 'continuous') {
@@ -172,7 +173,7 @@ export class RpiStreamManager extends StreamManager {
 
     setDetection(enabled) {
         this.detectionEnabled = !!enabled;
-        console.log(`Detection enabled: ${this.detectionEnabled}`);
+        logger.info(`Detection enabled: ${this.detectionEnabled}`);
         return true;
     }
 
@@ -187,12 +188,12 @@ export class RpiStreamManager extends StreamManager {
     }
 
     startStreamIfNeeded() {
-        console.log('startStreamIfNeeded', this.mode, this.clients.size, this.isStreaming, this.rpiProcess ? 'running' : 'not running');
+        logger.info(`startStreamIfNeeded mode=${this.mode} clients=${this.clients.size} streaming=${this.isStreaming} rpiProcess=${this.rpiProcess ? 'running' : 'not running'}`);
         const shouldStart = (this.mode === 'continuous') || (this.clients.size > 0);
         if (!shouldStart) return;
         if (this.isStreaming || this.rpiProcess) return;
 
-        console.log('Starting Pi Camera stream...');
+        logger.info('Starting Pi Camera stream...');
         this.isStreaming = true;
         this.startDetection();
 
@@ -213,12 +214,12 @@ export class RpiStreamManager extends StreamManager {
         }
 
         this.rpiProcess.on('error', (err) => {
-            console.error('rpicam-vid error:', err.message);
+            logger.error(`rpicam-vid error: ${err.message}`);
             this.forceStop();
         });
 
         this.rpiProcess.on('exit', (code, signal) => {
-            console.log(`rpicam-vid exited with code ${code} and signal ${signal}`);
+            logger.info(`rpicam-vid exited with code ${code} and signal ${signal}`);
             this.rpiProcess = null;
             this.isStreaming = false;
             this.stopRecording();
@@ -248,7 +249,7 @@ export class RpiStreamManager extends StreamManager {
         if (this.ffmpegProcess) return;
         if (!this.rpiProcess) return;
 
-        console.log('Starting recording...');
+        logger.info('Starting recording...');
         const args = [
             '-f', 'mjpeg', '-framerate', '15', '-i', '-', '-c:v', 'libx264', '-preset', 'ultrafast',
             '-f', 'segment', '-segment_time', '300', '-reset_timestamps', '1', '-strftime', '1',
@@ -258,11 +259,11 @@ export class RpiStreamManager extends StreamManager {
         this.ffmpegProcess = spawn('ffmpeg', args);
         this.rpiProcess.stdout.pipe(this.ffmpegProcess.stdin);
         this.ffmpegProcess.stderr.on('data', (data) => {
-            // console.log(`ffmpeg: ${data}`); // Verbose
+            logger.debug(`ffmpeg: ${data}`); // Verbose
         });
-        this.ffmpegProcess.on('error', (err) => console.error('ffmpeg error:', err));
+        this.ffmpegProcess.on('error', (err) => logger.error(`ffmpeg error: ${err}`));
         this.ffmpegProcess.on('exit', (code) => {
-            console.log(`ffmpeg exited with code ${code}`);
+            logger.info(`ffmpeg exited with code ${code}`);
             this.ffmpegProcess = null;
         });
 
@@ -271,7 +272,7 @@ export class RpiStreamManager extends StreamManager {
 
     stopRecording() {
         if (this.ffmpegProcess) {
-            console.log('Stopping recording...');
+            logger.info('Stopping recording...');
             const proc = this.ffmpegProcess;
             this.ffmpegProcess = null;
             if (this.rpiProcess) this.rpiProcess.stdout.unpipe(proc.stdin);
@@ -279,7 +280,7 @@ export class RpiStreamManager extends StreamManager {
 
             return new Promise(resolve => {
                 const handler = () => {
-                    console.log('Recording process exited cleanly.');
+                    logger.info('Recording process exited cleanly.');
                     resolve();
                 };
                 proc.once('exit', handler);
@@ -295,7 +296,7 @@ export class RpiStreamManager extends StreamManager {
     stopStreamIfNoClients() {
         if (this.mode === 'continuous') return;
         if (this.clients.size === 0 && this.rpiProcess) {
-            console.log('No clients left. Stopping stream...');
+            logger.info('No clients left. Stopping stream...');
             this.forceStop();
         }
     }
@@ -318,7 +319,7 @@ export class RpiStreamManager extends StreamManager {
         if (!this.isStreaming) return;
         // If no frames for 10 seconds, restart
         if (Date.now() - this.lastFrameReceivedTime > 10000) {
-            console.error('Watchdog: Stream stalled (no frames for 10s). Restarting...');
+            logger.error('Watchdog: Stream stalled (no frames for 10s). Restarting...');
             this.forceStop().then(() => this.startStreamIfNeeded());
             this.lastFrameReceivedTime = Date.now(); // Reset to prevent double-trigger
         }
@@ -332,7 +333,7 @@ export class RpiStreamManager extends StreamManager {
                 mp4s.slice(0, mp4s.length - 36).forEach(f => {
                     fs.unlink(path.join(RECORDINGS_DIR, f), (err) => {
                         if (!err) {
-                            console.log(`Deleted old recording: ${f}`);
+                            logger.info(`Deleted old recording: ${f}`);
                             fs.unlink(path.join(THUMBNAILS_DIR, f.replace('.mp4', '.jpg')), () => { });
                         }
                     });
@@ -359,10 +360,10 @@ export class RpiStreamManager extends StreamManager {
 
         fs.writeFile(catPath, this.currentFrame, (err) => {
             if (err) {
-                console.error(`Failed to save ${filename}:`, err);
+                logger.error(`Failed to save ${filename}: ${err}`);
                 return;
             }
-            console.log(`Saved images/${filename}`);
+            logger.info(`Saved images/${filename}`);
 
             const messages = [
                 { type: 'text', text: '發現麻嚕!!' },
@@ -374,8 +375,8 @@ export class RpiStreamManager extends StreamManager {
             ];
 
             client.broadcast({ messages })
-                .then(() => console.log('Line broadcast sent'))
-                .catch((err) => console.error('Line broadcast failed:', err));
+                .then(() => logger.info('Line broadcast sent'))
+                .catch((err) => logger.error(`Line broadcast failed: ${err}`));
         });
     }
 }

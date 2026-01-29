@@ -2,6 +2,7 @@ import http from 'node:http';
 import WebSocket from 'ws';
 import { SOI, EOI } from '../utils/constants.js';
 import { StreamManager } from './StreamManager.js';
+import logger from '../utils/logger.js';
 
 export class EspStreamManager extends StreamManager {
     constructor(url) {
@@ -13,9 +14,9 @@ export class EspStreamManager extends StreamManager {
     }
 
     connect() {
-        console.log(`Connecting to ESP32 stream at ${this.url}...`);
+        logger.info(`Connecting to ESP32 stream at ${this.url}...`);
         this.request = http.get(this.url, (res) => {
-            console.log(`ESP32 Connected. Status: ${res.statusCode}`);
+            logger.info(`ESP32 Connected. Status: ${res.statusCode}`);
             let buffer = Buffer.alloc(0);
 
             res.on('data', (chunk) => {
@@ -35,12 +36,12 @@ export class EspStreamManager extends StreamManager {
             });
 
             res.on('end', () => {
-                console.log('ESP32 Stream ended. Reconnecting...');
+                logger.info('ESP32 Stream ended. Reconnecting...');
                 this.scheduleReconnect();
             });
 
         }).on('error', (err) => {
-            console.error('ESP32 Connection Error:', err.message);
+            logger.error(`ESP32 Connection Error: ${err.message}`);
             this.scheduleReconnect();
         });
     }
