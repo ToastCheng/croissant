@@ -1,5 +1,5 @@
-require('dotenv').config();
-const line = require('@line/bot-sdk');
+import 'dotenv/config';
+import { messagingApi } from '@line/bot-sdk';
 
 const HOSTNAME = process.env.PUBLIC_HOSTNAME || 'localhost:3000';
 
@@ -10,7 +10,7 @@ const HOSTNAME = process.env.PUBLIC_HOSTNAME || 'localhost:3000';
 // };
 
 // create LINE SDK client
-const client = new line.messagingApi.MessagingApiClient({
+const client = new messagingApi.MessagingApiClient({
     channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN
 });
 

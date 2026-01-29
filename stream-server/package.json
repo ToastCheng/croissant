@@ -2,7 +2,8 @@
     "name": "stream-server",
     "version": "1.0.0",
     "description": "Video streaming server",
-    "main": "server.js",
+    "main": "home.js",
+    "type": "module",
     "scripts": {
         "dev": "node home.js"
     },

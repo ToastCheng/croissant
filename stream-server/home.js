@@ -1,12 +1,17 @@
-require('dotenv').config();
-const WebSocket = require('ws');
-const line = require('@line/bot-sdk');
-const { spawn } = require('child_process');
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
-const express = require('express');
+import 'dotenv/config';
+import WebSocket, { WebSocketServer } from 'ws';
+import { messagingApi } from '@line/bot-sdk';
+import { spawn } from 'node:child_process';
+import http from 'node:http';
+import fs from 'node:fs';
+import path, { dirname } from 'node:path';
+import os from 'node:os';
+import express from 'express';
+import { fileURLToPath, parse } from 'node:url';
+import { createInterface } from 'node:readline';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 
 // create LINE SDK config from env variables
@@ -15,7 +20,7 @@ const config = {
 };
 
 // create LINE SDK client
-const client = new line.messagingApi.MessagingApiClient({
+const client = new messagingApi.MessagingApiClient({
     channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN
 });
 
@@ -101,8 +106,8 @@ class StreamManager {
             this.pythonProcess = spawn(PYTHON_EXEC, [PYTHON_SCRIPT]);
 
             // Handle Output (JSON Logs)
-            const readline = require('readline');
-            const rl = readline.createInterface({ input: this.pythonProcess.stdout });
+            // Handle Output (JSON Logs)
+            const rl = createInterface({ input: this.pythonProcess.stdout });
 
             rl.on('line', (line) => {
                 try {
@@ -765,11 +770,11 @@ app.use((req, res) => {
 
 
 // --- WEBSOCKET SERVER ---
-const wss = new WebSocket.Server({ noServer: true });
-const wssEsp = new WebSocket.Server({ noServer: true });
+const wss = new WebSocketServer({ noServer: true });
+const wssEsp = new WebSocketServer({ noServer: true });
 
 server.on('upgrade', (request, socket, head) => {
-    const { pathname } = require('url').parse(request.url);
+    const { pathname } = parse(request.url);
 
     if (pathname === '/ws') {
         wss.handleUpgrade(request, socket, head, (ws) => {
