@@ -4,6 +4,7 @@ import path from 'node:path';
 import WebSocket from 'ws';
 import { createInterface } from 'node:readline';
 import { messagingApi } from '@line/bot-sdk';
+import { StreamManager } from './StreamManager.js';
 import {
     RECORDINGS_DIR,
     THUMBNAILS_DIR,
@@ -49,14 +50,13 @@ class StateTracker {
     }
 }
 
-export class RpiStreamManager {
+export class RpiStreamManager extends StreamManager {
     constructor() {
+        super();
         this.rpiProcess = null;
         this.ffmpegProcess = null;
-        this.clients = new Set();
         this.isStreaming = false;
         this.mode = 'continuous';
-        this.currentFrame = null;
         this.detectionEnabled = true;
 
         this.pythonProcess = null;
@@ -173,19 +173,13 @@ export class RpiStreamManager {
     }
 
     addClient(ws) {
-        if (!this.clients.has(ws)) {
-            this.clients.add(ws);
-            console.log(`Client added. Total clients: ${this.clients.size}`);
-            this.startStreamIfNeeded();
-        }
+        super.addClient(ws);
+        this.startStreamIfNeeded();
     }
 
     removeClient(ws) {
-        if (this.clients.has(ws)) {
-            this.clients.delete(ws);
-            console.log(`Client removed. Total clients: ${this.clients.size}`);
-            this.stopStreamIfNoClients();
-        }
+        super.removeClient(ws);
+        this.stopStreamIfNoClients();
     }
 
     startStreamIfNeeded() {
@@ -322,12 +316,7 @@ export class RpiStreamManager {
         });
     }
 
-    broadcast(data) {
-        this.currentFrame = data;
-        for (const client of this.clients) {
-            if (client.readyState === WebSocket.OPEN) client.send(data);
-        }
-    }
+    // broadcast inherited
 
     saveCatCapture() {
         if (!this.currentFrame) return;

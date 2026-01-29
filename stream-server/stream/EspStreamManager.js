@@ -1,12 +1,12 @@
 import http from 'node:http';
 import WebSocket from 'ws';
 import { SOI, EOI } from '../utils/constants.js';
+import { StreamManager } from './StreamManager.js';
 
-export class EspStreamManager {
+export class EspStreamManager extends StreamManager {
     constructor(url) {
+        super();
         this.url = url;
-        this.currentFrame = null;
-        this.clients = new Set();
         this.request = null;
         this.retryTimeout = null;
         this.connect();
@@ -28,7 +28,6 @@ export class EspStreamManager {
                     if (end === -1) break;
 
                     const frame = buffer.subarray(start, end + 2);
-                    this.currentFrame = frame;
                     this.broadcast(frame);
                     offset = end + 2;
                 }
@@ -52,36 +51,13 @@ export class EspStreamManager {
     }
 
     addClient(ws) {
-        if (!this.clients.has(ws)) {
-            this.clients.add(ws);
-            console.log(`ESP32 Viewer added. Total: ${this.clients.size}`);
-            if (this.currentFrame && ws.readyState === WebSocket.OPEN) {
-                this.sendFrameToClient(ws, this.currentFrame);
-            }
+        super.addClient(ws);
+        if (this.currentFrame && ws.readyState === WebSocket.OPEN) {
+            this.sendFrameToClient(ws, this.currentFrame);
         }
     }
 
-    removeClient(ws) {
-        if (this.clients.has(ws)) {
-            this.clients.delete(ws);
-            console.log(`ESP32 Viewer removed. Total: ${this.clients.size}`);
-        }
-    }
-
-    broadcast(frame) {
-        for (const client of this.clients) {
-            this.sendFrameToClient(client, frame);
-        }
-    }
-
-    sendFrameToClient(ws, frame) {
-        try {
-            ws.send(frame, (err) => {
-                if (err) console.error('ESP32 WS send error:', err);
-            });
-        } catch (e) {
-            console.error('ESP32 WS broadcast exception:', e);
-            this.removeClient(ws);
-        }
-    }
+    // removeClient inherited
+    // broadcast inherited
+    // sendFrameToClient inherited
 }
