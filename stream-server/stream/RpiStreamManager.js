@@ -258,6 +258,10 @@ export class RpiStreamManager extends StreamManager {
 
         this.ffmpegProcess = spawn('ffmpeg', args);
         this.rpiProcess.stdout.pipe(this.ffmpegProcess.stdin);
+
+        // If we don't listen to stderr.on('data'), Node.js doesn't drain this buffer.
+        // Once the 64KB buffer is full, the OS pauses (blocks) the ffmpeg process to
+        // prevent data loss. ffmpeg literally freezes, waiting for space to clear up.
         this.ffmpegProcess.stderr.on('data', (data) => {
             logger.debug(`ffmpeg: ${data}`); // Verbose
         });
