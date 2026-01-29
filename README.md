@@ -197,3 +197,25 @@ If the compressed image data naturally contains the byte 0xFF, the standard requ
 The parser sees 0xFF, looks at the next byte (0x00), and knows "Ah, this isn't a marker, this is just a literal 255 value".
 
 This system ensures that the markers can be reliably detected within the binary stream without conflict.
+
+## Q&A
+
+### How to Check SSR?
+In Next.js, it's important to know where your code is running (Server vs. Client) to handle API URLs and Authentication correctly.
+
+| Feature | Server Side (SSR) | Client Side (CSR) |
+| :--- | :--- | :--- |
+| **File Marker** | Default (No marker) | `'use client'` at top |
+| **Trigger** | Page Load / Request time | `useEffect`, Buttons, Interactions |
+| **Network** | Fast (Server-to-Server) | Slower (Browser-to-Server) |
+| **URL Style** | **Absolute** (`http://localhost:8080`) | **Relative** (`/api/...`) |
+| **Auth** | Manual (inject `Authorization` header) | Automatic (Browser Cookie) |
+
+**Programmatic Check:**
+```javascript
+if (typeof window === 'undefined') {
+  console.log('Running on Server 🖥️');
+} else {
+  console.log('Running in Browser 🌐');
+}
+```
