@@ -37,6 +37,8 @@ export class StreamManager {
                 console.error('WS broadcast exception:', e);
                 this.removeClient(ws);
             }
+        } else {
+            console.error('websocket is not open:', ws.readyState);
         }
     }
 }

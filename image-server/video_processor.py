@@ -15,8 +15,8 @@ def main():
         sys.stderr.flush()
         return
 
-    sys.stderr.write("Python Video Processor Started\n")
-    sys.stderr.flush()
+    sys.stdout.write("Python Video Processor Started\n")
+    sys.stdout.flush()
 
     while True:
         try:

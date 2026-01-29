@@ -62,6 +62,7 @@ export class RpiStreamManager extends StreamManager {
         this.pythonProcess = null;
         this.detectionBuffer = Buffer.alloc(0);
         this.lastFrameTime = 0;
+        this.lastFrameReceivedTime = Date.now();
 
         this.catTracker = new StateTracker('cat', 2000);
         this.personTracker = new StateTracker('person', 2000);
@@ -70,6 +71,9 @@ export class RpiStreamManager extends StreamManager {
             this.rotateRecordings();
             this.ensureThumbnails();
         }, 60 * 1000);
+
+        // Watchdog: Check stream health every 5 seconds
+        setInterval(() => this.checkStreamHealth(), 5000);
 
         this.startStreamIfNeeded();
     }
@@ -183,6 +187,7 @@ export class RpiStreamManager extends StreamManager {
     }
 
     startStreamIfNeeded() {
+        console.log('startStreamIfNeeded', this.mode, this.clients.size, this.isStreaming, this.rpiProcess ? 'running' : 'not running');
         const shouldStart = (this.mode === 'continuous') || (this.clients.size > 0);
         if (!shouldStart) return;
         if (this.isStreaming || this.rpiProcess) return;
@@ -191,10 +196,17 @@ export class RpiStreamManager extends StreamManager {
         this.isStreaming = true;
         this.startDetection();
 
+        // Added --verbose 1 to get more debug info
         this.rpiProcess = spawn('rpicam-vid', [
             '--inline', '-t', '0', '--width', '1280', '--height', '720',
-            '--framerate', '15', '--codec', 'mjpeg', '-o', '-'
+            '--framerate', '15', '--codec', 'mjpeg', '-o', '-',
+            // '--verbose', '1'
         ]);
+
+        // Capture standard error to debug hangs
+        // this.rpiProcess.stderr.on('data', (data) => {
+        //     console.error('rpicam-vid stderr:', data.toString());
+        // });
 
         if (this.mode === 'continuous') {
             this.startRecording();
@@ -223,6 +235,7 @@ export class RpiStreamManager extends StreamManager {
                 if (end === -1) break;
 
                 const frame = buffer.subarray(start, end + 2);
+                this.lastFrameReceivedTime = Date.now();
                 this.broadcast(frame);
                 this.sendFrameToPython(frame);
                 offset = end + 2;
@@ -244,7 +257,9 @@ export class RpiStreamManager extends StreamManager {
 
         this.ffmpegProcess = spawn('ffmpeg', args);
         this.rpiProcess.stdout.pipe(this.ffmpegProcess.stdin);
-
+        this.ffmpegProcess.stderr.on('data', (data) => {
+            // console.log(`ffmpeg: ${data}`); // Verbose
+        });
         this.ffmpegProcess.on('error', (err) => console.error('ffmpeg error:', err));
         this.ffmpegProcess.on('exit', (code) => {
             console.log(`ffmpeg exited with code ${code}`);
@@ -297,6 +312,16 @@ export class RpiStreamManager extends StreamManager {
         }
         this.isStreaming = false;
         return p;
+    }
+
+    checkStreamHealth() {
+        if (!this.isStreaming) return;
+        // If no frames for 10 seconds, restart
+        if (Date.now() - this.lastFrameReceivedTime > 10000) {
+            console.error('Watchdog: Stream stalled (no frames for 10s). Restarting...');
+            this.forceStop().then(() => this.startStreamIfNeeded());
+            this.lastFrameReceivedTime = Date.now(); // Reset to prevent double-trigger
+        }
     }
 
     rotateRecordings() {
