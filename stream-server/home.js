@@ -546,27 +546,23 @@ class EspStreamManager {
         this.retryTimeout = setTimeout(() => this.connect(), 5000);
     }
 
-    addClient(res) {
-        // Prepare Response Header for MJPEG
-        res.writeHead(200, {
-            'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
-            'Connection': 'keep-alive',
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0',
-        });
+    addClient(ws) {
 
-        this.clients.add(res);
-        console.log(`ESP32 Viewer added. Total: ${this.clients.size}`);
+        if (!this.clients.has(ws)) {
+            this.clients.add(ws);
+            console.log(`ESP32 Viewer added. Total: ${this.clients.size}`);
 
-        res.on('close', () => {
-            this.clients.delete(res);
+            // Send current frame immediately if possible
+            if (this.currentFrame && ws.readyState === WebSocket.OPEN) {
+                this.sendFrameToClient(ws, this.currentFrame);
+            }
+        }
+    }
+
+    removeClient(ws) {
+        if (this.clients.has(ws)) {
+            this.clients.delete(ws);
             console.log(`ESP32 Viewer removed. Total: ${this.clients.size}`);
-        });
-
-        // If we have a frame ready, send it immediately
-        if (this.currentFrame) {
-            this.sendFrameToClient(res, this.currentFrame);
         }
     }
 
@@ -576,14 +572,14 @@ class EspStreamManager {
         }
     }
 
-    sendFrameToClient(res, frame) {
+    sendFrameToClient(ws, frame) {
         try {
-            res.write(`--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ${frame.length}\r\n\r\n`);
-            res.write(frame);
-            res.write('\r\n');
+            ws.send(frame, (err) => {
+                if (err) console.error('ESP32 WS send error:', err);
+            });
         } catch (e) {
-            console.error('Error sending to ESP32 viewer:', e);
-            this.clients.delete(res);
+            console.error('ESP32 WS broadcast exception:', e);
+            this.removeClient(ws);
         }
     }
 }
@@ -644,11 +640,6 @@ const server = http.createServer((req, res) => {
     }
     // ----------------------
 
-    // API: ESP32 Stream
-    if (req.method === 'GET' && req.url === '/api/esp32') {
-        espStreamManager.addClient(res);
-        return;
-    }
 
     // API: List replays
     if (req.method === 'GET' && req.url === '/api/replays') {
@@ -869,18 +860,34 @@ const server = http.createServer((req, res) => {
     res.end('Pi Camera Stream Server is running');
 });
 
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocket.Server({ noServer: true });
+const wssEsp = new WebSocket.Server({ noServer: true });
 
 server.listen(8080, () => {
     console.log('HTTP/WebSocket server listening on port 8080');
 });
 
+server.on('upgrade', (request, socket, head) => {
+    const { pathname } = require('url').parse(request.url);
+
+    if (pathname === '/ws') {
+        wss.handleUpgrade(request, socket, head, (ws) => {
+            wss.emit('connection', ws, request);
+        });
+    } else if (pathname === '/ws/esp32') {
+        wssEsp.handleUpgrade(request, socket, head, (ws) => {
+            wssEsp.emit('connection', ws, request);
+        });
+    } else {
+        socket.destroy();
+    }
+});
+
 wss.on('connection', (ws) => {
-    console.log('Client connected');
+    console.log('RPi Client connected');
 
     ws.on('message', (message) => {
         const msg = message.toString();
-        // console.log('Received:', msg); // Reduce noise
 
         if (msg === 'start') {
             streamManager.addClient(ws);
@@ -890,8 +897,26 @@ wss.on('connection', (ws) => {
     });
 
     ws.on('close', () => {
-        console.log('Client disconnected');
+        console.log('RPi Client disconnected');
         streamManager.removeClient(ws);
+    });
+});
+
+wssEsp.on('connection', (ws) => {
+    console.log('ESP32 Client connected');
+
+    ws.on('message', (message) => {
+        const msg = message.toString();
+        if (msg === 'start') {
+            espStreamManager.addClient(ws);
+        } else if (msg === 'stop') {
+            espStreamManager.removeClient(ws);
+        }
+    });
+
+    ws.on('close', () => {
+        console.log('ESP32 Client disconnected');
+        espStreamManager.removeClient(ws);
     });
 });
 
@@ -902,6 +927,7 @@ const cleanup = async () => {
     // Close servers to stop accepting connections
     server.close();
     wss.close();
+    wssEsp.close();
 
     // Wait for recording to save cleanly
     await streamManager.forceStop();

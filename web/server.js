@@ -53,7 +53,8 @@ app.prepare().then(() => {
     server.on('upgrade', (req, socket, head) => {
         const { pathname } = parse(req.url || '', true)
 
-        if (pathname === '/ws') {
+        if (pathname === '/ws' || pathname === '/ws/esp32') {
+            // Target is localhost:8080 (WS port)
             proxy.ws(req, socket, head)
         } else {
             // Allow Next.js to handle other upgrades (e.g. HMR) if applicable, 
