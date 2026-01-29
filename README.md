@@ -57,6 +57,43 @@ The web interface connects to the stream server to display the video feed.
    ```
    The app will run on `http://localhost:3000`.
 
+## Production Build & Run
+
+### 1. Stream Server (Backend)
+
+1. Navigate to `stream-server`:
+   ```bash
+   cd stream-server
+   ```
+2. Install production dependencies:
+   ```bash
+   npm install --omit=dev
+   ```
+3. Start the server:
+   ```bash
+   node home.js
+   ```
+   *Tip: Use a process manager like PM2 to keep it running in the background.*
+
+### 2. Web Interface (Frontend)
+
+1. Navigate to `web`:
+   ```bash
+   cd web
+   ```
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Build the application:
+   ```bash
+   npm run build
+   ```
+4. Start the production server:
+   ```bash
+   NODE_ENV=production node server.js
+   ```
+
 ## Usage
 
 1. Ensure both the stream server and web app are running.
