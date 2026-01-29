@@ -11,6 +11,7 @@ export default function StreamPage() {
     const [isStreaming, setIsStreaming] = useState(false);
     const [firstFrameReceived, setFirstFrameReceived] = useState(false);
     const [mode, setMode] = useState<'on-demand' | 'continuous' | null>(null);
+    const [activeCamera, setActiveCamera] = useState<0 | 1>(0);
     const videoRef = useRef<HTMLImageElement>(null);
     const wsRef = useRef<WebSocket | null>(null);
 
@@ -65,8 +66,6 @@ export default function StreamPage() {
 
         ws.onmessage = (event) => {
             // Crude handling: Assume each message is a full valid JPEG for this demo
-            // In production, we'd need a buffer builder to stitch chunks if they are fragmented
-            // For now, if 'image2pipe' flushes well, we might get away with it or see glitches
             const arrayBuffer = event.data;
             const blob = new Blob([arrayBuffer], { type: 'image/jpeg' });
             const url = URL.createObjectURL(blob);
@@ -105,7 +104,7 @@ export default function StreamPage() {
     };
 
     const handleCaptureFrame = () => {
-        if (videoRef.current && videoRef.current.src) {
+        if (activeCamera === 0 && videoRef.current && videoRef.current.src) {
             const now = new Date();
             // Format YYYYMMDD-HHMMSS
             const pad = (n: number) => n.toString().padStart(2, '0');
@@ -122,63 +121,104 @@ export default function StreamPage() {
         <main className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-8 pt-24">
             <h1 className="text-4xl font-bold mb-8 tracking-tighter">Live Stream</h1>
 
+            {/* Camera Tabs */}
+            <div className="flex gap-4 mb-6">
+                <button
+                    onClick={() => setActiveCamera(0)}
+                    className={`px-6 py-2 rounded-full font-medium transition-all ${activeCamera === 0 ? 'bg-white text-black shadow-lg' : 'bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
+                >
+                    Camera #0 (RPi)
+                </button>
+                <button
+                    onClick={() => setActiveCamera(1)}
+                    className={`px-6 py-2 rounded-full font-medium transition-all ${activeCamera === 1 ? 'bg-white text-black shadow-lg' : 'bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
+                >
+                    Camera #1 (ESP32)
+                </button>
+            </div>
+
             <div className="relative w-full max-w-4xl aspect-video bg-zinc-900 rounded-2xl overflow-hidden border border-zinc-800 shadow-2xl flex items-center justify-center">
-                {isConnected ? (
+
+                {/* Camera #0: RPi Stream */}
+                {activeCamera === 0 && (
+                    <>
+                        {isConnected ? (
+                            <img
+                                ref={videoRef}
+                                alt="Live Stream"
+                                className={`w-full h-full object-contain ${!firstFrameReceived && isStreaming ? 'opacity-0' : 'opacity-100'} transition-opacity duration-300`}
+                            />
+                        ) : (
+                            <div className="text-zinc-500">Connecting to server...</div>
+                        )}
+
+                        {/* Overlay if not streaming but connected */}
+                        {isConnected && !isStreaming && mode === 'on-demand' && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm pointer-events-none">
+                                <p className="text-xl font-medium">Ready to Stream</p>
+                            </div>
+                        )}
+
+                        {/* Visual loading state when streaming started but no frame yet */}
+                        {isConnected && (isStreaming || mode === 'continuous') && !firstFrameReceived && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-zinc-900 z-10">
+                                <div className="flex flex-col items-center gap-3">
+                                    <div className="w-8 h-8 border-4 border-white/20 border-t-white rounded-full animate-spin" />
+                                    <p className="text-sm text-zinc-400">Initializing Stream...</p>
+                                </div>
+                            </div>
+                        )}
+                    </>
+                )}
+
+                {/* Camera #1: ESP32 Stream */}
+                {activeCamera === 1 && (
                     <img
-                        ref={videoRef}
-                        alt="Live Stream"
-                        className={`w-full h-full object-contain ${!firstFrameReceived && isStreaming ? 'opacity-0' : 'opacity-100'} transition-opacity duration-300`}
+                        src="/api/esp32"
+                        alt="ESP32 Live Stream"
+                        className="w-full h-full object-contain"
                     />
-                ) : (
-                    <div className="text-zinc-500">Connecting to server...</div>
-                )}
-
-                {/* Overlay if not streaming but connected */}
-                {isConnected && !isStreaming && mode === 'on-demand' && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm pointer-events-none">
-                        <p className="text-xl font-medium">Ready to Stream</p>
-                    </div>
-                )}
-
-                {/* Visual loading state when streaming started but no frame yet */}
-                {isConnected && (isStreaming || mode === 'continuous') && !firstFrameReceived && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-zinc-900 z-10">
-                        <div className="flex flex-col items-center gap-3">
-                            <div className="w-8 h-8 border-4 border-white/20 border-t-white rounded-full animate-spin" />
-                            <p className="text-sm text-zinc-400">Initializing Stream...</p>
-                        </div>
-                    </div>
                 )}
             </div>
 
-            <div className="mt-8 flex gap-6">
-                <button
-                    onClick={handleToggleStream}
-                    disabled={!isConnected || mode === 'continuous'}
-                    style={{ width: '64px', height: '64px' }}
-                    className={`flex items-center justify-center rounded-full font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed
-                        ${isStreaming
-                            ? 'bg-red-600 text-white hover:bg-red-700'
-                            : 'bg-white text-black hover:bg-gray-200'
-                        }`}
-                    aria-label={isStreaming ? "Stop Stream" : "Start Stream"}
-                >
-                    {isStreaming ? (
-                        <TbPlayerPauseFilled size={24} />
-                    ) : (
-                        <FaPlay size={24} />
-                    )}
-                </button>
+            <div className="mt-8 flex gap-6 min-h-[64px]">
+                {/* Controls only for Camera 0 */}
+                {activeCamera === 0 && (
+                    <>
+                        <button
+                            onClick={handleToggleStream}
+                            disabled={!isConnected || mode === 'continuous'}
+                            style={{ width: '64px', height: '64px' }}
+                            className={`flex items-center justify-center rounded-full font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed
+                                ${isStreaming
+                                    ? 'bg-red-600 text-white hover:bg-red-700'
+                                    : 'bg-white text-black hover:bg-gray-200'
+                                }`}
+                            aria-label={isStreaming ? "Stop Stream" : "Start Stream"}
+                        >
+                            {isStreaming ? (
+                                <TbPlayerPauseFilled size={24} />
+                            ) : (
+                                <FaPlay size={24} />
+                            )}
+                        </button>
 
-                <button
-                    onClick={handleCaptureFrame}
-                    disabled={!isStreaming || !firstFrameReceived}
-                    style={{ width: '64px', height: '64px' }}
-                    className="flex items-center justify-center rounded-full bg-zinc-800 text-white border border-zinc-700 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                    aria-label="Capture Frame"
-                >
-                    <FaCamera size={24} />
-                </button>
+                        <button
+                            onClick={handleCaptureFrame}
+                            disabled={!isStreaming || !firstFrameReceived}
+                            style={{ width: '64px', height: '64px' }}
+                            className="flex items-center justify-center rounded-full bg-zinc-800 text-white border border-zinc-700 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                            aria-label="Capture Frame"
+                        >
+                            <FaCamera size={24} />
+                        </button>
+                    </>
+                )}
+                {activeCamera === 1 && (
+                    <div className="flex items-center text-zinc-500 text-sm font-mono">
+                        ESP32 Stream (Always On)
+                    </div>
+                )}
             </div>
 
             <div className="mt-8">
