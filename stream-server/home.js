@@ -6,6 +6,8 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const express = require('express');
+
 
 // create LINE SDK config from env variables
 const config = {
@@ -588,303 +590,183 @@ class EspStreamManager {
 const streamManager = new StreamManager();
 const espStreamManager = new EspStreamManager('http://192.168.1.114/stream');
 
-const server = http.createServer((req, res) => {
-    // CORS headers
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, Authorization');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+const app = express();
+const server = http.createServer(app);
 
-    // 1. Public Routes
-    if (req.method === 'OPTIONS') {
-        res.writeHead(204);
-        res.end();
-        return;
-    }
-
-    if (req.method === 'GET' && req.url === '/health') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }));
-        return;
-    }
-
-    // 2. Authentication (Strict Bearer Only)
-    const PASSWORD = process.env.PASSWORD;
-    if (PASSWORD) {
-        const authHeader = req.headers.authorization;
-        if (!authHeader || authHeader !== `Bearer ${PASSWORD}`) {
-            res.writeHead(401, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'Unauthorized' }));
-            return;
-        }
-    }
-
-    // 3. Protected Routes
-
-    // API: System Stats
-    if (req.method === 'GET' && req.url === '/api/stats') {
-        const getCpuTemperature = () => {
-            try {
-                const temp = fs.readFileSync("/sys/class/thermal/thermal_zone0/temp", "utf8");
-                return (parseInt(temp) / 1000).toFixed(1);
-            } catch (e) {
-                return "N/A";
-            }
-        };
-
-        const getCpuUsage = () => {
-            const cpus = os.cpus();
-            if (!cpus || cpus.length === 0) return "0.0";
-            const loadAvg = os.loadavg()[0];
-            const usagePercent = (loadAvg / cpus.length) * 100;
-            return Math.min(usagePercent, 100).toFixed(1);
-        };
-
-        const totalMem = (os.totalmem() / (1024 * 1024 * 1024)).toFixed(2);
-        const freeMem = (os.freemem() / (1024 * 1024 * 1024)).toFixed(2);
-        const usedMem = (parseFloat(totalMem) - parseFloat(freeMem)).toFixed(2);
-        const memUsagePercent = ((parseFloat(usedMem) / parseFloat(totalMem)) * 100).toFixed(1);
-
-        const stats = {
-            hostname: os.hostname(),
-            totalMem,
-            usedMem,
-            memUsagePercent,
-            cpuTemp: getCpuTemperature(),
-            cpuUsage: getCpuUsage(),
-            uptime: (os.uptime() / 3600).toFixed(1)
-        };
-
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(stats));
-        return;
-    }
-
-
-    // API: List replays
-    if (req.method === 'GET' && req.url === '/api/replays') {
-        fs.readdir(RECORDINGS_DIR, (err, files) => {
-            if (err) {
-                res.writeHead(500, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Failed to read recordings' }));
-                return;
-            }
-            const recordings = files
-                .filter(f => f.endsWith('.mp4'))
-                .map(f => {
-                    const thumbName = f.replace('.mp4', '.jpg');
-                    const hasThumb = fs.existsSync(path.join(THUMBNAILS_DIR, thumbName));
-                    return {
-                        filename: f,
-                        url: `/recordings/${f}`,
-                        thumbnailUrl: hasThumb ? `/thumbnails/${thumbName}` : null
-                    };
-                })
-                .sort((a, b) => b.filename.localeCompare(a.filename)); // Newest first
-
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify(recordings));
-        });
-        return;
-    }
-
-    // Serve recordings (MP4)
-    if (req.method === 'GET' && req.url.startsWith('/recordings/')) {
-        const filename = req.url.split('/')[2];
-        const filePath = path.join(RECORDINGS_DIR, filename);
-
-        if (path.relative(RECORDINGS_DIR, filePath).startsWith('..')) {
-            res.writeHead(403); res.end('Forbidden'); return;
-        }
-
-        if (fs.existsSync(filePath)) {
-            const stat = fs.statSync(filePath);
-            const fileSize = stat.size;
-            const range = req.headers.range;
-
-            if (range) {
-                const parts = range.replace(/bytes=/, "").split("-");
-                const start = parseInt(parts[0], 10);
-                const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-                const chunksize = (end - start) + 1;
-                const file = fs.createReadStream(filePath, { start, end });
-                const head = {
-                    'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-                    'Accept-Ranges': 'bytes',
-                    'Content-Length': chunksize,
-                    'Content-Type': 'video/mp4',
-                };
-                res.writeHead(206, head);
-                file.pipe(res);
-            } else {
-                const head = {
-                    'Content-Length': fileSize,
-                    'Content-Type': 'video/mp4',
-                };
-                res.writeHead(200, head);
-                fs.createReadStream(filePath).pipe(res);
-            }
-        } else {
-            res.writeHead(404);
-            res.end('Not Found');
-        }
-        return;
-    }
-
-    // Serve thumbnails (JPG)
-    if (req.method === 'GET' && req.url.startsWith('/thumbnails/')) {
-        const filename = req.url.split('/')[2];
-        const filePath = path.join(THUMBNAILS_DIR, filename);
-
-        if (path.relative(THUMBNAILS_DIR, filePath).startsWith('..')) {
-            res.writeHead(403); res.end('Forbidden'); return;
-        }
-
-        if (fs.existsSync(filePath)) {
-            const stat = fs.statSync(filePath);
-            res.writeHead(200, {
-                'Content-Length': stat.size,
-                'Content-Type': 'image/jpeg',
-                // Cache valid thumbnails reasonably long as they don't change
-                'Cache-Control': 'public, max-age=3600'
-            });
-            fs.createReadStream(filePath).pipe(res);
-        } else {
-            // Prevent browser from caching 404s so it retries when file is created
-            res.setHeader('Cache-Control', 'no-store');
-            res.writeHead(404);
-            res.end('Not Found');
-        }
-        return;
-    }
-
-    // Serve msg images (JPG)
-    if (req.method === 'GET' && req.url.startsWith('/images/')) {
-        const filename = req.url.split('/')[2];
-        const filePath = path.join(IMAGES_DIR, filename);
-
-        if (path.relative(IMAGES_DIR, filePath).startsWith('..')) {
-            res.writeHead(403); res.end('Forbidden'); return;
-        }
-
-        if (fs.existsSync(filePath)) {
-            const stat = fs.statSync(filePath);
-            res.writeHead(200, {
-                'Content-Length': stat.size,
-                'Content-Type': 'image/jpeg',
-                // No caching for these as they update frequently
-                'Cache-Control': 'no-store'
-            });
-            fs.createReadStream(filePath).pipe(res);
-        } else {
-            res.writeHead(404);
-            res.end('Not Found');
-        }
-        return;
-    }
-
-    // API: List images (supports ?page=1&limit=50)
-    if (req.method === 'GET' && req.url.startsWith('/api/images')) {
-        const urlParts = req.url.split('?');
-        const query = new URLSearchParams(urlParts[1]);
-        const page = parseInt(query.get('page'));
-        const limit = parseInt(query.get('limit'));
-
-        fs.readdir(IMAGES_DIR, (err, files) => {
-            if (err) {
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify(page ? { images: [], total: 0 } : []));
-                return;
-            }
-
-            let allImages = files
-                .filter(f => f.endsWith('.jpg'))
-                .sort((a, b) => b.localeCompare(a)); // Newest first
-
-            // If pagination params are present, return paginated object
-            if (!isNaN(page) && !isNaN(limit)) {
-                const total = allImages.length;
-                const totalPages = Math.ceil(total / limit);
-                const startIndex = (page - 1) * limit;
-                const sliced = allImages.slice(startIndex, startIndex + limit).map(f => ({
-                    filename: f,
-                    url: `/images/${f}`
-                }));
-
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({
-                    images: sliced,
-                    total: total,
-                    page: page,
-                    totalPages: totalPages
-                }));
-            } else {
-                // Default behavior: return top 5 array (legacy/home support)
-                const sliced = allImages.slice(0, 5).map(f => ({
-                    filename: f,
-                    url: `/images/${f}`
-                }));
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify(sliced));
-            }
-        });
-        return;
-    }
-
-    // Settings endpoint
-    if (req.url === '/api/settings') {
-        if (req.method === 'GET') {
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({
-                mode: streamManager.mode,
-                detectionEnabled: streamManager.detectionEnabled
-            }));
-            return;
-        } else if (req.method === 'POST') {
-            let body = '';
-            req.on('data', chunk => body += chunk.toString());
-            req.on('end', () => {
-                try {
-                    const { mode, detectionEnabled } = JSON.parse(body);
-                    let updated = false;
-
-                    if (mode !== undefined) {
-                        if (streamManager.setMode(mode)) updated = true;
-                    }
-                    if (detectionEnabled !== undefined) {
-                        if (streamManager.setDetection(detectionEnabled)) updated = true;
-                    }
-
-                    if (updated) {
-                        res.writeHead(200, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({
-                            status: 'updated',
-                            mode: streamManager.mode,
-                            detectionEnabled: streamManager.detectionEnabled
-                        }));
-                    } else {
-                        res.writeHead(400, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({ error: 'Invalid settings' }));
-                    }
-                } catch (e) {
-                    res.writeHead(400, { 'Content-Type': 'application/json' });
-                    res.end(JSON.stringify({ error: 'Invalid JSON' }));
-                }
-            });
-            return;
-        }
-    }
-
-    // Default response
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Pi Camera Stream Server is running');
+// Global Middleware
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, Authorization');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    next();
 });
 
+// JSON Body Parser for Settings
+app.use(express.json());
+
+// --- AUTHENTICATION MIDDLEWARE ---
+const protect = (req, res, next) => {
+    const PASSWORD = process.env.PASSWORD;
+    if (!PASSWORD) return next();
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader || authHeader !== `Bearer ${PASSWORD}`) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    next();
+};
+
+// --- PUBLIC ROUTES ---
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok', uptime: process.uptime() });
+});
+
+// --- PROTECTED ROUTES ---
+// Apply protection to all API routes and Static files
+app.use('/api', protect);
+app.use('/recordings', protect);
+app.use('/thumbnails', protect);
+app.use('/images', protect);
+
+// API: System Stats
+app.get('/api/stats', (req, res) => {
+    const getCpuTemperature = () => {
+        try {
+            const temp = fs.readFileSync("/sys/class/thermal/thermal_zone0/temp", "utf8");
+            return (parseInt(temp) / 1000).toFixed(1);
+        } catch (e) {
+            return "N/A";
+        }
+    };
+
+    const getCpuUsage = () => {
+        const cpus = os.cpus();
+        if (!cpus || cpus.length === 0) return "0.0";
+        const loadAvg = os.loadavg()[0];
+        const usagePercent = (loadAvg / cpus.length) * 100;
+        return Math.min(usagePercent, 100).toFixed(1);
+    };
+
+    const totalMem = (os.totalmem() / (1024 * 1024 * 1024)).toFixed(2);
+    const freeMem = (os.freemem() / (1024 * 1024 * 1024)).toFixed(2);
+    const usedMem = (parseFloat(totalMem) - parseFloat(freeMem)).toFixed(2);
+    const memUsagePercent = ((parseFloat(usedMem) / parseFloat(totalMem)) * 100).toFixed(1);
+
+    res.json({
+        hostname: os.hostname(),
+        totalMem,
+        usedMem,
+        memUsagePercent,
+        cpuTemp: getCpuTemperature(),
+        cpuUsage: getCpuUsage(),
+        uptime: (os.uptime() / 3600).toFixed(1)
+    });
+});
+
+// API: List Replays
+app.get('/api/replays', (req, res) => {
+    fs.readdir(RECORDINGS_DIR, (err, files) => {
+        if (err) return res.status(500).json({ error: 'Failed to read recordings' });
+
+        const recordings = files
+            .filter(f => f.endsWith('.mp4'))
+            .map(f => {
+                const thumbName = f.replace('.mp4', '.jpg');
+                const hasThumb = fs.existsSync(path.join(THUMBNAILS_DIR, thumbName));
+                return {
+                    filename: f,
+                    url: `/recordings/${f}`,
+                    thumbnailUrl: hasThumb ? `/thumbnails/${thumbName}` : null
+                };
+            })
+            .sort((a, b) => b.filename.localeCompare(a.filename));
+
+        res.json(recordings);
+    });
+});
+
+// API: List Images
+app.get('/api/images', (req, res) => {
+    const page = parseInt(req.query.page);
+    const limit = parseInt(req.query.limit);
+
+    fs.readdir(IMAGES_DIR, (err, files) => {
+        if (err) return res.json(page ? { images: [], total: 0 } : []);
+
+        let allImages = files
+            .filter(f => f.endsWith('.jpg'))
+            .sort((a, b) => b.localeCompare(a));
+
+        if (!isNaN(page) && !isNaN(limit)) {
+            const total = allImages.length;
+            const totalPages = Math.ceil(total / limit);
+            const startIndex = (page - 1) * limit;
+            const sliced = allImages.slice(startIndex, startIndex + limit).map(f => ({
+                filename: f,
+                url: `/images/${f}`
+            }));
+
+            res.json({
+                images: sliced,
+                total,
+                page,
+                totalPages
+            });
+        } else {
+            const sliced = allImages.slice(0, 5).map(f => ({
+                filename: f,
+                url: `/images/${f}`
+            }));
+            res.json(sliced);
+        }
+    });
+});
+
+// API: Settings
+app.get('/api/settings', (req, res) => {
+    res.json({
+        mode: streamManager.mode,
+        detectionEnabled: streamManager.detectionEnabled
+    });
+});
+
+app.post('/api/settings', (req, res) => {
+    const { mode, detectionEnabled } = req.body;
+    let updated = false;
+
+    if (mode !== undefined) {
+        if (streamManager.setMode(mode)) updated = true;
+    }
+    if (detectionEnabled !== undefined) {
+        if (streamManager.setDetection(detectionEnabled)) updated = true;
+    }
+
+    if (updated) {
+        res.json({
+            status: 'updated',
+            mode: streamManager.mode,
+            detectionEnabled: streamManager.detectionEnabled
+        });
+    } else {
+        res.status(400).json({ error: 'Invalid settings' });
+    }
+});
+
+// Static Files (Protected)
+app.use('/recordings', express.static(RECORDINGS_DIR));
+app.use('/thumbnails', express.static(THUMBNAILS_DIR, { maxAge: '1h' }));
+app.use('/images', express.static(IMAGES_DIR));
+
+// Fallback
+app.use((req, res) => {
+    res.status(404).send('Not Found');
+});
+
+
+// --- WEBSOCKET SERVER ---
 const wss = new WebSocket.Server({ noServer: true });
 const wssEsp = new WebSocket.Server({ noServer: true });
-
-server.listen(8080, () => {
-    console.log('HTTP/WebSocket server listening on port 8080');
-});
 
 server.on('upgrade', (request, socket, head) => {
     const { pathname } = require('url').parse(request.url);
@@ -904,17 +786,11 @@ server.on('upgrade', (request, socket, head) => {
 
 wss.on('connection', (ws) => {
     console.log('RPi Client connected');
-
     ws.on('message', (message) => {
         const msg = message.toString();
-
-        if (msg === 'start') {
-            streamManager.addClient(ws);
-        } else if (msg === 'stop') {
-            streamManager.removeClient(ws);
-        }
+        if (msg === 'start') streamManager.addClient(ws);
+        else if (msg === 'stop') streamManager.removeClient(ws);
     });
-
     ws.on('close', () => {
         console.log('RPi Client disconnected');
         streamManager.removeClient(ws);
@@ -923,34 +799,28 @@ wss.on('connection', (ws) => {
 
 wssEsp.on('connection', (ws) => {
     console.log('ESP32 Client connected');
-
     ws.on('message', (message) => {
         const msg = message.toString();
-        if (msg === 'start') {
-            espStreamManager.addClient(ws);
-        } else if (msg === 'stop') {
-            espStreamManager.removeClient(ws);
-        }
+        if (msg === 'start') espStreamManager.addClient(ws);
+        else if (msg === 'stop') espStreamManager.removeClient(ws);
     });
-
     ws.on('close', () => {
         console.log('ESP32 Client disconnected');
         espStreamManager.removeClient(ws);
     });
 });
 
-// Robust cleanup on server exit
+server.listen(8080, () => {
+    console.log('Express Server listening on port 8080');
+});
+
+// Robust cleanup
 const cleanup = async () => {
     console.log('Server shutting down...');
-
-    // Close servers to stop accepting connections
     server.close();
     wss.close();
     wssEsp.close();
-
-    // Wait for recording to save cleanly
     await streamManager.forceStop();
-
     console.log('Cleanup complete. Exiting.');
     process.exit(0);
 };
