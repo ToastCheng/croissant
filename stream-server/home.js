@@ -594,11 +594,31 @@ const server = http.createServer((req, res) => {
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, Authorization');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
+    // 1. Public Routes
     if (req.method === 'OPTIONS') {
         res.writeHead(204);
         res.end();
         return;
     }
+
+    if (req.method === 'GET' && req.url === '/health') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }));
+        return;
+    }
+
+    // 2. Authentication (Strict Bearer Only)
+    const PASSWORD = process.env.PASSWORD;
+    if (PASSWORD) {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || authHeader !== `Bearer ${PASSWORD}`) {
+            res.writeHead(401, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Unauthorized' }));
+            return;
+        }
+    }
+
+    // 3. Protected Routes
 
     // API: System Stats
     if (req.method === 'GET' && req.url === '/api/stats') {
@@ -638,47 +658,6 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify(stats));
         return;
     }
-
-    // Health check endpoint (Public)
-    if (req.method === 'GET' && req.url === '/health') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }));
-        return;
-    }
-
-    // --- AUTHENTICATION ---
-    const PASSWORD = process.env.PASSWORD;
-    if (PASSWORD) {
-        let authorized = false;
-
-        // 1. Authorization Header
-        const authHeader = req.headers.authorization;
-        if (authHeader === `Bearer ${PASSWORD}`) authorized = true;
-
-        // 2. Cookie
-        if (!authorized && req.headers.cookie) {
-            const cookies = req.headers.cookie.split(';');
-            for (const cookie of cookies) {
-                const [name, value] = cookie.trim().split('=');
-                if (name === 'auth_token' && value === PASSWORD) {
-                    authorized = true;
-                    break;
-                }
-            }
-        }
-
-        // 3. Query Param (for simple testing/WS)
-        if (!authorized && req.url.includes(`token=${PASSWORD}`)) {
-            authorized = true;
-        }
-
-        if (!authorized) {
-            res.writeHead(401, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'Unauthorized' }));
-            return;
-        }
-    }
-    // ----------------------
 
 
     // API: List replays

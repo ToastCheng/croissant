@@ -37,6 +37,15 @@ app.prepare().then(() => {
                 pathname.startsWith('/images') ||
                 pathname.startsWith('/api')
             )) {
+                // Inject Authorization header from auth_token cookie
+                const cookies = req.headers.cookie;
+                if (cookies) {
+                    const match = cookies.match(/auth_token=([^;]+)/);
+                    if (match && match[1]) {
+                        req.headers['authorization'] = `Bearer ${match[1]}`;
+                    }
+                }
+
                 proxy.web(req, res, { target: 'http://localhost:8080' })
                 return
             }
