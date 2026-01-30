@@ -5,18 +5,34 @@ import { StreamManager } from './StreamManager.js';
 import logger from '../utils/logger.js';
 
 export class EspStreamManager extends StreamManager {
-    constructor(url) {
-        super();
+    constructor(url, recorder) {
+        super(recorder);
         this.url = url;
         this.request = null;
+        this.response = null;
         this.retryTimeout = null;
         this.connect();
+    }
+
+    setMode(mode) {
+        if (!super.setMode(mode)) return false;
+
+        if (this.mode === 'continuous') {
+            if (this.response) this.startRecording(this.response);
+        } else {
+            if (this.response) this.stopRecording(this.response);
+        }
+        return true;
     }
 
     connect() {
         logger.info(`Connecting to ESP32 stream at ${this.url}...`);
         this.request = http.get(this.url, (res) => {
             logger.info(`ESP32 Connected. Status: ${res.statusCode}`);
+            this.response = res;
+
+            this.startRecording(this.response);
+
             let buffer = Buffer.alloc(0);
 
             res.on('data', (chunk) => {
@@ -37,11 +53,17 @@ export class EspStreamManager extends StreamManager {
 
             res.on('end', () => {
                 logger.info('ESP32 Stream ended. Reconnecting...');
+                this.stopRecording(this.response);
+                this.response = null;
                 this.scheduleReconnect();
             });
 
         }).on('error', (err) => {
             logger.error(`ESP32 Connection Error: ${err.message}`);
+            if (this.response) {
+                this.stopRecording(this.response);
+                this.response = null;
+            }
             this.scheduleReconnect();
         });
     }

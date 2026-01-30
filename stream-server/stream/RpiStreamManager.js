@@ -52,10 +52,9 @@ class StateTracker {
 }
 
 export class RpiStreamManager extends StreamManager {
-    constructor() {
-        super();
+    constructor(recorder) {
+        super(recorder);
         this.rpiProcess = null;
-        this.ffmpegProcess = null;
         this.isStreaming = false;
         this.mode = 'continuous';
         this.detectionEnabled = true;
@@ -67,11 +66,6 @@ export class RpiStreamManager extends StreamManager {
 
         this.catTracker = new StateTracker('cat', 2000);
         this.personTracker = new StateTracker('person', 2000);
-
-        setInterval(() => {
-            this.rotateRecordings();
-            this.ensureThumbnails();
-        }, 60 * 1000);
 
         // Watchdog: Check stream health every 5 seconds
         setInterval(() => this.checkStreamHealth(), 5000);
@@ -134,38 +128,16 @@ export class RpiStreamManager extends StreamManager {
         }
     }
 
-    ensureThumbnails() {
-        fs.readdir(RECORDINGS_DIR, (err, files) => {
-            if (err) return;
-            files.filter(f => f.endsWith('.mp4')).forEach(mp4 => {
-                const jpg = mp4.replace('.mp4', '.jpg');
-                const jpgPath = path.join(THUMBNAILS_DIR, jpg);
-                if (!fs.existsSync(jpgPath)) {
-                    const mp4Path = path.join(RECORDINGS_DIR, mp4);
-                    const ffmpeg = spawn('ffmpeg', [
-                        '-y', '-i', mp4Path, '-ss', '00:00:01', '-vframes', '1', jpgPath
-                    ]);
-                    ffmpeg.on('error', (err) => logger.error(`Thumbnail generation error: ${err}`));
-                    ffmpeg.on('exit', (code) => {
-                        if (code !== 183 && code !== 0) logger.error(`Failed to generate thumbnail for ${mp4} (code ${code})`);
-                    });
-                }
-            });
-        });
-    }
-
     setMode(mode) {
-        if (mode !== 'on-demand' && mode !== 'continuous') return false;
-        logger.info(`Switching mode to: ${mode}`);
-        this.mode = mode;
+        if (!super.setMode(mode)) return false;
 
         if (this.mode === 'continuous') {
             this.startStreamIfNeeded();
-            if (this.isStreaming && !this.ffmpegProcess) {
-                this.startRecording();
+            if (this.isStreaming && this.rpiProcess) {
+                this.startRecording(this.rpiProcess.stdout);
             }
         } else {
-            this.stopRecording();
+            this.stopRecording(this.rpiProcess ? this.rpiProcess.stdout : null);
             this.stopStreamIfNoClients();
         }
         return true;
@@ -204,13 +176,8 @@ export class RpiStreamManager extends StreamManager {
             // '--verbose', '1'
         ]);
 
-        // Capture standard error to debug hangs
-        // this.rpiProcess.stderr.on('data', (data) => {
-        //     console.error('rpicam-vid stderr:', data.toString());
-        // });
-
         if (this.mode === 'continuous') {
-            this.startRecording();
+            this.startRecording(this.rpiProcess.stdout);
         }
 
         this.rpiProcess.on('error', (err) => {
@@ -245,58 +212,6 @@ export class RpiStreamManager extends StreamManager {
         });
     }
 
-    startRecording() {
-        if (this.ffmpegProcess) return;
-        if (!this.rpiProcess) return;
-
-        logger.info('Starting recording...');
-        const args = [
-            '-f', 'mjpeg', '-framerate', '15', '-i', '-', '-c:v', 'libx264', '-preset', 'ultrafast',
-            '-f', 'segment', '-segment_time', '300', '-reset_timestamps', '1', '-strftime', '1',
-            path.join(RECORDINGS_DIR, '%Y%m%d-%H%M%S.mp4')
-        ];
-
-        this.ffmpegProcess = spawn('ffmpeg', args);
-        this.rpiProcess.stdout.pipe(this.ffmpegProcess.stdin);
-
-        // If we don't listen to stderr.on('data'), Node.js doesn't drain this buffer.
-        // Once the 64KB buffer is full, the OS pauses (blocks) the ffmpeg process to
-        // prevent data loss. ffmpeg literally freezes, waiting for space to clear up.
-        this.ffmpegProcess.stderr.on('data', (data) => {
-            logger.debug(`ffmpeg: ${data}`); // Verbose
-        });
-        this.ffmpegProcess.on('error', (err) => logger.error(`ffmpeg error: ${err}`));
-        this.ffmpegProcess.on('exit', (code) => {
-            logger.info(`ffmpeg exited with code ${code}`);
-            this.ffmpegProcess = null;
-        });
-
-        this.rotateRecordings();
-    }
-
-    stopRecording() {
-        if (this.ffmpegProcess) {
-            logger.info('Stopping recording...');
-            const proc = this.ffmpegProcess;
-            this.ffmpegProcess = null;
-            if (this.rpiProcess) this.rpiProcess.stdout.unpipe(proc.stdin);
-            proc.kill('SIGTERM');
-
-            return new Promise(resolve => {
-                const handler = () => {
-                    logger.info('Recording process exited cleanly.');
-                    resolve();
-                };
-                proc.once('exit', handler);
-                setTimeout(() => {
-                    proc.off('exit', handler);
-                    resolve();
-                }, 2000);
-            });
-        }
-        return Promise.resolve();
-    }
-
     stopStreamIfNoClients() {
         if (this.mode === 'continuous') return;
         if (this.clients.size === 0 && this.rpiProcess) {
@@ -306,7 +221,7 @@ export class RpiStreamManager extends StreamManager {
     }
 
     forceStop() {
-        const p = this.stopRecording();
+        const p = this.stopRecording(this.rpiProcess ? this.rpiProcess.stdout : null);
         if (this.rpiProcess) {
             this.rpiProcess.kill('SIGKILL');
             this.rpiProcess = null;
@@ -327,23 +242,6 @@ export class RpiStreamManager extends StreamManager {
             this.forceStop().then(() => this.startStreamIfNeeded());
             this.lastFrameReceivedTime = Date.now(); // Reset to prevent double-trigger
         }
-    }
-
-    rotateRecordings() {
-        fs.readdir(RECORDINGS_DIR, (err, files) => {
-            if (err) return;
-            const mp4s = files.filter(f => f.endsWith('.mp4')).sort();
-            if (mp4s.length > 36) {
-                mp4s.slice(0, mp4s.length - 36).forEach(f => {
-                    fs.unlink(path.join(RECORDINGS_DIR, f), (err) => {
-                        if (!err) {
-                            logger.info(`Deleted old recording: ${f}`);
-                            fs.unlink(path.join(THUMBNAILS_DIR, f.replace('.mp4', '.jpg')), () => { });
-                        }
-                    });
-                });
-            }
-        });
     }
 
     // broadcast inherited

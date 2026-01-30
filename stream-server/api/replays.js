@@ -6,24 +6,47 @@ import { RECORDINGS_DIR, THUMBNAILS_DIR } from '../utils/constants.js';
 const router = Router();
 
 router.get('/', (req, res) => {
-    fs.readdir(RECORDINGS_DIR, (err, files) => {
-        if (err) return res.status(500).json({ error: 'Failed to read recordings' });
+    // Helper to scan a directory
+    const scanDir = (dir, relativePath = '') => {
+        try {
+            const items = fs.readdirSync(dir);
+            let results = [];
+            for (const item of items) {
+                const fullPath = path.join(dir, item);
+                const stat = fs.statSync(fullPath);
 
-        const recordings = files
-            .filter(f => f.endsWith('.mp4'))
-            .map(f => {
-                const thumbName = f.replace('.mp4', '.jpg');
-                const hasThumb = fs.existsSync(path.join(THUMBNAILS_DIR, thumbName));
-                return {
-                    filename: f,
-                    url: `/recordings/${f}`,
-                    thumbnailUrl: hasThumb ? `/thumbnails/${thumbName}` : null
-                };
-            })
-            .sort((a, b) => b.filename.localeCompare(a.filename));
+                if (stat.isDirectory()) {
+                    results = results.concat(scanDir(fullPath, path.join(relativePath, item)));
+                } else if (item.endsWith('.mp4')) {
+                    const webPath = relativePath ? `${relativePath}/${item}` : item;
+                    // Ensure forward slashes for URLs
+                    const urlPath = webPath.split(path.sep).join('/');
 
-        res.json(recordings);
-    });
+                    const thumbDir = path.join(THUMBNAILS_DIR, relativePath);
+                    const thumbName = item.replace('.mp4', '.jpg');
+                    const hasThumb = fs.existsSync(path.join(thumbDir, thumbName));
+
+                    // Determine camera source from path (first segment)
+                    // If root: 'unknown'. If 'rpi/file.mp4': 'rpi'.
+                    const parts = urlPath.split('/');
+                    const camera = parts.length > 1 ? parts[0] : 'unknown';
+
+                    results.push({
+                        filename: urlPath,
+                        url: `/recordings/${urlPath}`,
+                        thumbnailUrl: hasThumb ? `/thumbnails/${urlPath.replace('.mp4', '.jpg')}` : null,
+                        camera
+                    });
+                }
+            }
+            return results;
+        } catch (e) {
+            return [];
+        }
+    };
+
+    const recordings = scanDir(RECORDINGS_DIR).sort((a, b) => b.filename.localeCompare(a.filename));
+    res.json(recordings);
 });
 
 export default router;

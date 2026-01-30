@@ -7,6 +7,7 @@ import { parse } from 'node:url';
 // Managers
 import { RpiStreamManager } from './stream/RpiStreamManager.js';
 import { EspStreamManager } from './stream/EspStreamManager.js';
+import { RecordManager } from './stream/RecordManager.js';
 
 // Middleware
 import { protect } from './middleware/auth.js';
@@ -25,9 +26,13 @@ import logger from './utils/logger.js';
 const app = express();
 const server = http.createServer(app);
 
+// Instantiate Recorders
+const rpiRecorder = new RecordManager('rpi');
+const espRecorder = new RecordManager('esp32');
+
 // Instantiate Managers
-const rpiStreamManager = new RpiStreamManager();
-const espStreamManager = new EspStreamManager('http://192.168.1.114/stream');
+const rpiStreamManager = new RpiStreamManager(rpiRecorder);
+const espStreamManager = new EspStreamManager('http://192.168.1.114/stream', espRecorder);
 
 // --- EXPRESS SETUP ---
 

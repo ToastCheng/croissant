@@ -2,9 +2,31 @@ import WebSocket from 'ws';
 import logger from '../utils/logger.js';
 
 export class StreamManager {
-    constructor() {
+    constructor(recorder) {
         this.clients = new Set();
         this.currentFrame = null;
+        this.recorder = recorder;
+        this.mode = 'continuous'; // Default mode
+    }
+
+    setMode(mode) {
+        if (mode !== 'on-demand' && mode !== 'continuous') return false;
+        logger.info(`Switching mode to: ${mode}`);
+        this.mode = mode;
+        return true;
+    }
+
+    startRecording(stream) {
+        if (this.mode === 'continuous' && this.recorder && stream) {
+            this.recorder.start(stream);
+        }
+    }
+
+    stopRecording(stream) {
+        if (this.recorder) {
+            return this.recorder.stop(stream);
+        }
+        return Promise.resolve();
     }
 
     addClient(ws) {
