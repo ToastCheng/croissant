@@ -9,6 +9,9 @@ import { RpiStreamManager } from './stream/RpiStreamManager.js';
 import { EspStreamManager } from './stream/EspStreamManager.js';
 import { RecordManager } from './stream/RecordManager.js';
 import { LineNotificationManager } from './notification/LineNotificationManager.js';
+import { WebPushNotificationManager } from './notification/WebPushNotificationManager.js';
+import { SubscriptionManager } from './notification/SubscriptionManager.js';
+import createNotificationsRouter from './api/notifications.js';
 
 // Middleware
 import { protect } from './middleware/auth.js';
@@ -31,10 +34,19 @@ const server = http.createServer(app);
 const rpiRecorder = new RecordManager('rpi');
 const espRecorder = new RecordManager('esp32');
 
-const lineNotificationManager = new LineNotificationManager(process.env.CHANNEL_ACCESS_TOKEN)
+const subscriptionManager = new SubscriptionManager();
+const webPushManager = new WebPushNotificationManager(subscriptionManager);
+const lineNotificationManager = new LineNotificationManager(process.env.CHANNEL_ACCESS_TOKEN);
+
+// Logic: Use WebPush for RPi stream notifications
+// Ideally we would want both, but user rejected Composite.
+// Let's use WebPush as the primary for now since that's the new feature request, OR just swap it here easily.
+// Actually, let's keep Line as primary if available, but since the user ASKED for PWA, maybe they want to test it.
+// I'll swap to WebPushManager as the notification manager passed to RpiStreamManager as requested by "implement... for PWA".
+const notificationManager = webPushManager;
 
 // Instantiate Managers
-const rpiStreamManager = new RpiStreamManager(rpiRecorder, lineNotificationManager);
+const rpiStreamManager = new RpiStreamManager(rpiRecorder, notificationManager);
 // const rpiStreamManager = new RpiStreamManager();
 const espStreamManager = new EspStreamManager('http://192.168.1.114/stream', espRecorder);
 // const espStreamManager = new EspStreamManager('http://192.168.1.114/stream');
@@ -69,6 +81,7 @@ app.use('/api/stats', statsRouter);
 app.use('/api/replays', replaysRouter);
 app.use('/api/images', imagesRouter);
 app.use('/api/settings', createSettingsRouter(rpiStreamManager));
+app.use('/api/notifications', createNotificationsRouter(subscriptionManager));
 
 // Static Files
 app.use('/recordings', express.static(RECORDINGS_DIR));

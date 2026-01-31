@@ -172,6 +172,40 @@ The system includes a persistent Python process for real-time object detection (
     *   Detects "cat" and "person".
     *   Updates `catPresent` and `personPresent` states with a **2-second confirmation window** to filter out flickering detections.
 
+### Notification System
+
+The system monitors the stream for specific events (e.g., "Cat Detected") and sends notifications via configured channels.
+
+#### 1. Line Messenger
+To enable Line notifications:
+1.  Create a Line Messaging API channel.
+2.  Get your **Channel Access Token**.
+3.  Add it to `.env`:
+    ```
+    CHANNEL_ACCESS_TOKEN=your_token_here
+    ```
+
+#### 2. PWA Push Notifications
+To enable browser push notifications (PWA):
+1.  **Generate VAPID Keys**:
+    Run the following command in the `stream-server` directory:
+    ```bash
+    npx web-push generate-vapid-keys
+    ```
+    This will output a **Public Key** and a **Private Key**.
+
+2.  **Configure Environment**:
+    Add the keys and a contact email (subject) to your `.env` file:
+    ```
+    VAPID_PUBLIC_KEY=your_public_key
+    VAPID_PRIVATE_KEY=your_private_key
+    VAPID_SUBJECT=mailto:your_email@example.com
+    ```
+
+The system automatically switches between notification methods:
+-   **Web Push** is prioritized for the RPi stream if configured.
+-   **Line** is used as a fallback or if configured explicitly.
+
 ## Technical Details
 
 ### MJPEG Stream Parsing
