@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import WebSocket from 'ws';
 import { createInterface } from 'node:readline';
-import { messagingApi } from '@line/bot-sdk';
+import { LineNotificationManager } from '../notification/LineNotificationManager.js';
 import { StreamManager } from './StreamManager.js';
 import {
     RECORDINGS_DIR,
@@ -21,11 +21,6 @@ import logger from '../utils/logger.js';
 if (!fs.existsSync(RECORDINGS_DIR)) fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
 if (!fs.existsSync(THUMBNAILS_DIR)) fs.mkdirSync(THUMBNAILS_DIR, { recursive: true });
 if (!fs.existsSync(IMAGES_DIR)) fs.mkdirSync(IMAGES_DIR, { recursive: true });
-
-// LINE Client
-const client = new messagingApi.MessagingApiClient({
-    channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN
-});
 
 class StateTracker {
     constructor(label, delayMs = 2000) {
@@ -52,7 +47,7 @@ class StateTracker {
 }
 
 export class RpiStreamManager extends StreamManager {
-    constructor(recorder) {
+    constructor(recorder, notificationManager) {
         super(recorder);
         this.rpiProcess = null;
         this.isStreaming = false;
@@ -66,6 +61,8 @@ export class RpiStreamManager extends StreamManager {
 
         this.catTracker = new StateTracker('cat', 2000);
         this.personTracker = new StateTracker('person', 2000);
+
+        this.notificationManager = notificationManager;
 
         // Watchdog: Check stream health every 5 seconds
         setInterval(() => this.checkStreamHealth(), 5000);
@@ -267,18 +264,12 @@ export class RpiStreamManager extends StreamManager {
             }
             logger.info(`Saved images/${filename}`);
 
-            const messages = [
-                { type: 'text', text: '發現麻嚕!!' },
-                {
-                    type: 'image',
-                    originalContentUrl: `https://${HOSTNAME}/images/${filename}`,
-                    previewImageUrl: `https://${HOSTNAME}/images/${filename}`
-                }
-            ];
-
-            client.broadcast({ messages })
-                .then(() => logger.info('Line broadcast sent'))
-                .catch((err) => logger.error(`Line broadcast failed: ${err}`));
+            const imageUrl = `https://${HOSTNAME}/images/${filename}`;
+            this.notificationManager.send(
+                'Cat Detected',
+                '發現麻嚕!!',
+                { imageUrl }
+            );
         });
     }
 }

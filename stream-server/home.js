@@ -8,6 +8,7 @@ import { parse } from 'node:url';
 import { RpiStreamManager } from './stream/RpiStreamManager.js';
 import { EspStreamManager } from './stream/EspStreamManager.js';
 import { RecordManager } from './stream/RecordManager.js';
+import { LineNotificationManager } from './notification/LineNotificationManager.js';
 
 // Middleware
 import { protect } from './middleware/auth.js';
@@ -30,11 +31,14 @@ const server = http.createServer(app);
 const rpiRecorder = new RecordManager('rpi');
 const espRecorder = new RecordManager('esp32');
 
+const lineNotificationManager = new LineNotificationManager(process.env.CHANNEL_ACCESS_TOKEN)
+
 // Instantiate Managers
-const rpiStreamManager = new RpiStreamManager(rpiRecorder);
+const rpiStreamManager = new RpiStreamManager(rpiRecorder, lineNotificationManager);
 // const rpiStreamManager = new RpiStreamManager();
 const espStreamManager = new EspStreamManager('http://192.168.1.114/stream', espRecorder);
 // const espStreamManager = new EspStreamManager('http://192.168.1.114/stream');
+
 
 // --- EXPRESS SETUP ---
 
