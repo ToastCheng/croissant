@@ -35,9 +35,18 @@ export class ObjectDetectionManager extends EventEmitter {
         this.enabled = true;
         this.lastFrameTime = 0;
 
-        // State Trackers
-        this.catTracker = new StateTracker('cat', 2000);
-        this.personTracker = new StateTracker('person', 2000);
+        // State Trackers are now dynamic per source
+        this.sourceTrackers = new Map();
+    }
+
+    getTrackers(sourceId) {
+        if (!this.sourceTrackers.has(sourceId)) {
+            this.sourceTrackers.set(sourceId, {
+                cat: new StateTracker(`[${sourceId}] cat`, 2000),
+                person: new StateTracker(`[${sourceId}] person`, 2000)
+            });
+        }
+        return this.sourceTrackers.get(sourceId);
     }
 
     start() {
@@ -51,22 +60,22 @@ export class ObjectDetectionManager extends EventEmitter {
             rl.on('line', (line) => {
                 try {
                     const data = JSON.parse(line);
-                    if (data.detections !== undefined) {
+                    if (data.detections !== undefined && data.source) {
+                        const source = data.source;
+                        const trackers = this.getTrackers(source);
+
                         const hasCat = data.detections.some(d => d.label === 'cat');
                         const hasPerson = data.detections.some(d => d.label === 'person');
 
-                        if (this.catTracker.update(hasCat)) {
-                            // Emit event when state changes
-                            this.emit('state-change', { label: 'cat', isPresent: this.catTracker.isPresent });
-
-                            // Specific event for presence (legacy support?)
-                            if (this.catTracker.isPresent) {
-                                this.emit('detection', { label: 'cat' });
+                        if (trackers.cat.update(hasCat)) {
+                            this.emit('state-change', { source, label: 'cat', isPresent: trackers.cat.isPresent });
+                            if (trackers.cat.isPresent) {
+                                this.emit('detection', { source, label: 'cat' });
                             }
                         }
 
-                        if (this.personTracker.update(hasPerson)) {
-                            this.emit('state-change', { label: 'person', isPresent: this.personTracker.isPresent });
+                        if (trackers.person.update(hasPerson)) {
+                            this.emit('state-change', { source, label: 'person', isPresent: trackers.person.isPresent });
                         }
                     }
                 } catch (e) {
@@ -77,6 +86,7 @@ export class ObjectDetectionManager extends EventEmitter {
             this.pythonProcess.stderr.on('data', d => logger.error(`Python Error: ${d.toString()}`));
             this.pythonProcess.on('exit', () => {
                 this.pythonProcess = null;
+                this.sourceTrackers.clear();
                 logger.info('Python detection stopped');
             });
         } catch (error) {
@@ -91,21 +101,28 @@ export class ObjectDetectionManager extends EventEmitter {
         }
     }
 
-    processFrame(frame) {
+    processFrame(frame, sourceId = 'unknown') {
         if (!this.enabled || !this.pythonProcess) return;
 
+        // Rate limit globally for now (or per source? global is safer for CPU)
         const now = Date.now();
         if (now - this.lastFrameTime < 1000) return; // Rate limit 1fps
 
         this.lastFrameTime = now;
         try {
-            const header = Buffer.alloc(4);
-            header.writeUInt32BE(frame.length, 0);
+            const sourceBuffer = Buffer.from(sourceId);
+            const idLen = sourceBuffer.length;
+            const totalLength = 1 + idLen + frame.length;
+
+            const header = Buffer.alloc(4 + 1 + idLen);
+            header.writeUInt32BE(totalLength, 0);
+            header.writeUInt8(idLen, 4);
+            sourceBuffer.copy(header, 5);
+
             this.pythonProcess.stdin.write(header);
             this.pythonProcess.stdin.write(frame);
         } catch (e) {
             console.error('Error writing to python:', e);
-            // Don't kill process here, it might be transient or just stdin closed
         }
     }
 

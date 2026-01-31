@@ -25,33 +25,36 @@ def main():
             if not length_bytes or len(length_bytes) < 4:
                 break # EOF
 
-            length = struct.unpack('>I', length_bytes)[0]
+            total_length = struct.unpack('>I', length_bytes)[0]
 
-            # 2. Read 'length' bytes (The JPEG Data)
-            # Use a loop to ensure full read
-            jpeg_data = b''
-            while len(jpeg_data) < length:
-                chunk = sys.stdin.buffer.read(length - len(jpeg_data))
+            # 2. Read full payload
+            payload = b''
+            while len(payload) < total_length:
+                chunk = sys.stdin.buffer.read(total_length - len(payload))
                 if not chunk:
                     break
-                jpeg_data += chunk
+                payload += chunk
             
-            if len(jpeg_data) != length:
+            if len(payload) != total_length:
                 continue # Incomplete frame
 
-            # 3. Decode Image
-            # Convert bytes to numpy array
+            # 3. Parse Payload
+            # Format: [1 byte ID Len][Source ID][Image Data]
+            id_len = payload[0]
+            source_id = payload[1:1+id_len].decode('utf-8')
+            jpeg_data = payload[1+id_len:]
+
+            # 4. Decode Image
             nparr = np.frombuffer(jpeg_data, np.uint8)
             img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
             if img is None:
                 continue
 
-            # 4. Run Inference
-            # stream=True is efficient for video
+            # 5. Run Inference
             results = model.predict(img, verbose=False, classes=[0, 15], imgsz=320) # 0=person, 15=cat
 
-            # 5. Process Results
+            # 6. Process Results
             detections = []
             for r in results:
                 for box in r.boxes:
@@ -66,9 +69,11 @@ def main():
                             "box": box.xywh.tolist()[0] # [x, y, w, h]
                         })
 
-            # 6. Output Result
-            # Always print to allow state tracking (absence detection)
-            output = {"detections": detections}
+            # 7. Output Result with Source ID
+            output = {
+                "source": source_id,
+                "detections": detections
+            }
             print(json.dumps(output))
             sys.stdout.flush()
 

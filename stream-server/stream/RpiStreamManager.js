@@ -33,8 +33,8 @@ export class RpiStreamManager extends StreamManager {
         // Listen for cat detection
         if (this.detectionManager) {
             this.detectionManager.on('detection', (data) => {
-                if (data.label === 'cat') {
-                    logger.info('Cat Detected! Capturing frame...');
+                if (data.source === 'rpi' && data.label === 'cat') {
+                    logger.info('Cat Detected on RPi! Capturing frame...');
                     this.saveCatCapture();
                 }
             });
