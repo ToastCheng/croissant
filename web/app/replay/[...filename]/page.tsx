@@ -7,9 +7,12 @@ import { useEffect, useState } from "react";
 
 export default function ReplayPlayerPage() {
     const params = useParams();
-    const filename = params.filename as string;
-    // Decode in case of URI encoding, though filename usually safe
-    const decodedFilename = decodeURIComponent(filename);
+    // Catch-all route returns an array of strings
+    const filenameParam = params.filename;
+    const filename = Array.isArray(filenameParam) ? filenameParam.join('/') : filenameParam;
+
+    // Decode in case of URI encoding
+    const decodedFilename = decodeURIComponent(filename as string);
 
     return (
         <main className="min-h-screen bg-zinc-950 pt-24 px-8 pb-12 text-white flex flex-col items-center">

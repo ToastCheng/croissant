@@ -32,7 +32,9 @@ const espRecorder = new RecordManager('esp32');
 
 // Instantiate Managers
 const rpiStreamManager = new RpiStreamManager(rpiRecorder);
+// const rpiStreamManager = new RpiStreamManager();
 const espStreamManager = new EspStreamManager('http://192.168.1.114/stream', espRecorder);
+// const espStreamManager = new EspStreamManager('http://192.168.1.114/stream');
 
 // --- EXPRESS SETUP ---
 

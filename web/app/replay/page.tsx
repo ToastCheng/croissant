@@ -8,14 +8,17 @@ type Recording = {
     filename: string;
     url: string;
     thumbnailUrl: string;
+    camera?: string;
 };
 
 export default function ReplayPage() {
     const [recordings, setRecordings] = useState<Recording[]>([]);
     const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState<'rpi' | 'esp32'>('rpi');
 
     useEffect(() => {
-        fetch('/api/replays')
+        setLoading(true);
+        fetch(`/api/replays/${activeTab}`)
             .then(res => res.json())
             .then(data => {
                 setRecordings(data);
@@ -25,7 +28,10 @@ export default function ReplayPage() {
                 console.error("Failed to fetch recordings:", err);
                 setLoading(false);
             });
-    }, []);
+    }, [activeTab]);
+
+    // No client-side filtering needed anymore
+    const filteredRecordings = recordings;
 
     if (loading) {
         return (
@@ -40,11 +46,27 @@ export default function ReplayPage() {
             <div className="max-w-7xl mx-auto space-y-8">
                 <h1 className="text-4xl font-bold tracking-tight">Replays</h1>
 
-                {recordings.length === 0 ? (
-                    <div className="text-zinc-500 text-lg">No recordings found.</div>
+                {/* Camera Tabs */}
+                <div className="flex gap-4">
+                    <button
+                        onClick={() => setActiveTab('rpi')}
+                        className={`px-6 py-2 rounded-full font-medium transition-all ${activeTab === 'rpi' ? 'bg-white text-black shadow-lg' : 'bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
+                    >
+                        Camera #0 (RPi)
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('esp32')}
+                        className={`px-6 py-2 rounded-full font-medium transition-all ${activeTab === 'esp32' ? 'bg-white text-black shadow-lg' : 'bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
+                    >
+                        Camera #1 (ESP32)
+                    </button>
+                </div>
+
+                {filteredRecordings.length === 0 ? (
+                    <div className="text-zinc-500 text-lg">No recordings found for {activeTab === 'rpi' ? 'RPi' : 'ESP32'}.</div>
                 ) : (
-                    <div className="grid grid-cols-3 gap-2 md:grid-cols-3 lg:grid-cols-4 md:gap-6">
-                        {recordings.filter(rec => rec.thumbnailUrl).map((rec) => (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+                        {filteredRecordings.filter(rec => rec.thumbnailUrl).map((rec) => (
                             <Link
                                 key={rec.filename}
                                 href={`/replay/${rec.filename}`}

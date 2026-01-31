@@ -5,47 +5,61 @@ import { RECORDINGS_DIR, THUMBNAILS_DIR } from '../utils/constants.js';
 
 const router = Router();
 
-router.get('/', (req, res) => {
-    // Helper to scan a directory
-    const scanDir = (dir, relativePath = '') => {
-        try {
-            const items = fs.readdirSync(dir);
-            let results = [];
-            for (const item of items) {
-                const fullPath = path.join(dir, item);
-                const stat = fs.statSync(fullPath);
+// Helper to scan a directory
+const scanDir = (dir, relativePath = '') => {
+    try {
+        if (!fs.existsSync(dir)) return [];
 
-                if (stat.isDirectory()) {
-                    results = results.concat(scanDir(fullPath, path.join(relativePath, item)));
-                } else if (item.endsWith('.mp4')) {
-                    const webPath = relativePath ? `${relativePath}/${item}` : item;
-                    // Ensure forward slashes for URLs
-                    const urlPath = webPath.split(path.sep).join('/');
+        const items = fs.readdirSync(dir);
+        let results = [];
+        for (const item of items) {
+            const fullPath = path.join(dir, item);
+            const stat = fs.statSync(fullPath);
 
-                    const thumbDir = path.join(THUMBNAILS_DIR, relativePath);
-                    const thumbName = item.replace('.mp4', '.jpg');
-                    const hasThumb = fs.existsSync(path.join(thumbDir, thumbName));
+            if (stat.isDirectory()) {
+                results = results.concat(scanDir(fullPath, path.join(relativePath, item)));
+            } else if (item.endsWith('.mp4') && relativePath) {
+                // Ensure forward slashes for URLs
+                const webPath = `${relativePath}/${item}`;
+                const urlPath = webPath.split(path.sep).join('/');
 
-                    // Determine camera source from path (first segment)
-                    // If root: 'unknown'. If 'rpi/file.mp4': 'rpi'.
-                    const parts = urlPath.split('/');
-                    const camera = parts.length > 1 ? parts[0] : 'unknown';
+                const thumbDir = path.join(THUMBNAILS_DIR, relativePath);
+                const thumbName = item.replace('.mp4', '.jpg');
+                const hasThumb = fs.existsSync(path.join(thumbDir, thumbName));
 
-                    results.push({
-                        filename: urlPath,
-                        url: `/recordings/${urlPath}`,
-                        thumbnailUrl: hasThumb ? `/thumbnails/${urlPath.replace('.mp4', '.jpg')}` : null,
-                        camera
-                    });
-                }
+                results.push({
+                    filename: urlPath,
+                    url: `/recordings/${urlPath}`,
+                    thumbnailUrl: hasThumb ? `/thumbnails/${urlPath.replace('.mp4', '.jpg')}` : null
+                });
             }
-            return results;
-        } catch (e) {
-            return [];
         }
-    };
+        return results;
+    } catch (e) {
+        return [];
+    }
+};
 
-    const recordings = scanDir(RECORDINGS_DIR).sort((a, b) => b.filename.localeCompare(a.filename));
+router.get('/:camera', (req, res) => {
+    const { camera } = req.params;
+
+    let targetDir = RECORDINGS_DIR;
+    let relativeStart = '';
+
+    if (camera) {
+        // Sanitize camera param to prevent directory traversal
+        const safeCamera = camera.replace(/[^a-zA-Z0-9_\-]/g, '');
+        targetDir = path.join(RECORDINGS_DIR, safeCamera);
+        relativeStart = safeCamera;
+    }
+
+    const recordings = scanDir(targetDir, relativeStart)
+        .sort((a, b) => b.filename.localeCompare(a.filename))
+        .map(rec => ({
+            ...rec,
+            camera: camera || (rec.filename.split('/').length > 1 ? rec.filename.split('/')[0] : 'unknown')
+        }));
+
     res.json(recordings);
 });
 

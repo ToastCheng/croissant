@@ -108,8 +108,12 @@ export class RecordManager {
     }
 
     ensureThumbnails() {
+        logger.info(`[${this.cameraName}] Ensuring thumbnails...`);
         fs.readdir(this.recDir, (err, files) => {
-            if (err) return;
+            if (err) {
+                logger.error(`[${this.cameraName}] readdir error: ${err}`);
+                return;
+            }
             files.filter(f => f.endsWith('.mp4')).forEach(mp4 => {
                 const jpg = mp4.replace('.mp4', '.jpg');
                 const jpgPath = path.join(this.thumbDir, jpg);
@@ -118,8 +122,9 @@ export class RecordManager {
                     const ffmpeg = spawn('ffmpeg', [
                         '-y', '-i', mp4Path, '-ss', '00:00:01', '-vframes', '1', jpgPath
                     ]);
-                    ffmpeg.on('error', (err) => logger.error(`[${this.cameraName}] Thumbnail generation error: ${err}`));
+                    ffmpeg.on('error', (err) => logger.error(`[${this.cameraName}] ${jpgPath} thumbnail generation error: ${err}`));
                     ffmpeg.on('exit', (code) => {
+                        // 183: already exists
                         if (code !== 183 && code !== 0) logger.error(`[${this.cameraName}] Failed to generate thumbnail for ${mp4} (code ${code})`);
                     });
                 }
