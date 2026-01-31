@@ -1,16 +1,12 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import WebSocket from 'ws';
-import { createInterface } from 'node:readline';
 import { LineNotificationManager } from '../notification/LineNotificationManager.js';
 import { StreamManager } from './StreamManager.js';
 import {
     RECORDINGS_DIR,
     THUMBNAILS_DIR,
     IMAGES_DIR,
-    PYTHON_EXEC,
-    PYTHON_SCRIPT,
     HOSTNAME,
     SOI,
     EOI
@@ -22,107 +18,32 @@ if (!fs.existsSync(RECORDINGS_DIR)) fs.mkdirSync(RECORDINGS_DIR, { recursive: tr
 if (!fs.existsSync(THUMBNAILS_DIR)) fs.mkdirSync(THUMBNAILS_DIR, { recursive: true });
 if (!fs.existsSync(IMAGES_DIR)) fs.mkdirSync(IMAGES_DIR, { recursive: true });
 
-class StateTracker {
-    constructor(label, delayMs = 2000) {
-        this.label = label;
-        this.delayMs = delayMs;
-        this.isPresent = false;
-        this.potentialState = false;
-        this.firstTransitionTime = 0;
-    }
-
-    update(isDetected) {
-        if (isDetected !== this.potentialState) {
-            this.potentialState = isDetected;
-            this.firstTransitionTime = Date.now();
-        } else if (this.potentialState !== this.isPresent) {
-            if (Date.now() - this.firstTransitionTime >= this.delayMs) {
-                this.isPresent = this.potentialState;
-                logger.info(`State Update: ${this.label}Present = ${this.isPresent}`);
-                return true;
-            }
-        }
-        return false;
-    }
-}
-
 export class RpiStreamManager extends StreamManager {
-    constructor(recorder, notificationManager) {
+    constructor(recorder, notificationManager, detectionManager) {
         super(recorder);
         this.rpiProcess = null;
         this.isStreaming = false;
         this.mode = 'continuous';
-        this.detectionEnabled = true;
 
-        this.pythonProcess = null;
-        this.detectionBuffer = Buffer.alloc(0);
-        this.lastFrameTime = 0;
         this.lastFrameReceivedTime = Date.now();
 
-        this.catTracker = new StateTracker('cat', 2000);
-        this.personTracker = new StateTracker('person', 2000);
-
         this.notificationManager = notificationManager;
+        this.detectionManager = detectionManager;
+
+        // Listen for cat detection
+        if (this.detectionManager) {
+            this.detectionManager.on('detection', (data) => {
+                if (data.label === 'cat') {
+                    logger.info('Cat Detected! Capturing frame...');
+                    this.saveCatCapture();
+                }
+            });
+        }
 
         // Watchdog: Check stream health every 5 seconds
         setInterval(() => this.checkStreamHealth(), 5000);
 
         this.startStreamIfNeeded();
-    }
-
-    startDetection() {
-        if (this.pythonProcess) return;
-
-        logger.info('Starting Python Detection Service...');
-        try {
-            this.pythonProcess = spawn(PYTHON_EXEC, [PYTHON_SCRIPT]);
-            const rl = createInterface({ input: this.pythonProcess.stdout });
-
-            rl.on('line', (line) => {
-                try {
-                    const data = JSON.parse(line);
-                    if (data.detections !== undefined) {
-                        const hasCat = data.detections.some(d => d.label === 'cat');
-                        const hasPerson = data.detections.some(d => d.label === 'person');
-
-                        if (this.catTracker.update(hasCat)) {
-                            if (this.catTracker.isPresent) {
-                                logger.info('Cat Detected! Capturing frame...');
-                                this.saveCatCapture();
-                            }
-                        }
-                        this.personTracker.update(hasPerson);
-                    }
-                } catch (e) {
-                    logger.info(`Python: ${line}`);
-                }
-            });
-
-            this.pythonProcess.stderr.on('data', d => logger.error(`Python Error: ${d.toString()}`));
-            this.pythonProcess.on('exit', () => {
-                this.pythonProcess = null;
-                logger.info('Python detection stopped');
-            });
-        } catch (error) {
-            logger.error(`Failed to spawn python process: ${error}`);
-        }
-    }
-
-    sendFrameToPython(frame) {
-        if (!this.detectionEnabled) return;
-        const now = Date.now();
-        if (now - this.lastFrameTime < 1000) return;
-
-        this.lastFrameTime = now;
-        try {
-            const header = Buffer.alloc(4);
-            header.writeUInt32BE(frame.length, 0);
-            this.pythonProcess.stdin.write(header);
-            this.pythonProcess.stdin.write(frame);
-        } catch (e) {
-            console.error('Error writing to python:', e);
-            this.pythonProcess = null;
-        }
     }
 
     setMode(mode) {
@@ -141,9 +62,11 @@ export class RpiStreamManager extends StreamManager {
     }
 
     setDetection(enabled) {
-        this.detectionEnabled = !!enabled;
-        logger.info(`Detection enabled: ${this.detectionEnabled}`);
-        return true;
+        if (this.detectionManager) {
+            this.detectionManager.setEnabled(enabled);
+            return true;
+        }
+        return false;
     }
 
     addClient(ws) {
@@ -164,7 +87,10 @@ export class RpiStreamManager extends StreamManager {
 
         logger.info('Starting Pi Camera stream...');
         this.isStreaming = true;
-        this.startDetection();
+
+        if (this.detectionManager) {
+            this.detectionManager.start();
+        }
 
         // Added --verbose 1 to get more debug info
         this.rpiProcess = spawn('rpicam-vid', [
@@ -202,7 +128,11 @@ export class RpiStreamManager extends StreamManager {
                 const frame = buffer.subarray(start, end + 2);
                 this.lastFrameReceivedTime = Date.now();
                 this.broadcast(frame);
-                this.sendFrameToPython(frame);
+
+                if (this.detectionManager) {
+                    this.detectionManager.processFrame(frame);
+                }
+
                 offset = end + 2;
             }
             if (offset > 0) buffer = buffer.subarray(offset);
@@ -223,10 +153,11 @@ export class RpiStreamManager extends StreamManager {
             this.rpiProcess.kill('SIGKILL');
             this.rpiProcess = null;
         }
-        if (this.pythonProcess) {
-            this.pythonProcess.kill();
-            this.pythonProcess = null;
+
+        if (this.detectionManager) {
+            this.detectionManager.stop();
         }
+
         this.isStreaming = false;
         return p;
     }

@@ -9,9 +9,10 @@ import { RpiStreamManager } from './stream/RpiStreamManager.js';
 import { EspStreamManager } from './stream/EspStreamManager.js';
 import { RecordManager } from './stream/RecordManager.js';
 import { LineNotificationManager } from './notification/LineNotificationManager.js';
+
 import { WebPushNotificationManager } from './notification/WebPushNotificationManager.js';
 import { SubscriptionManager } from './notification/SubscriptionManager.js';
-import createNotificationsRouter from './api/notifications.js';
+import { ObjectDetectionManager } from './detection/ObjectDetectionManager.js';
 
 // Middleware
 import { protect } from './middleware/auth.js';
@@ -21,6 +22,7 @@ import statsRouter from './api/stats.js';
 import replaysRouter from './api/replays.js';
 import imagesRouter from './api/images.js';
 import createSettingsRouter from './api/settings.js';
+import createNotificationsRouter from './api/notifications.js';
 
 // Constants
 import { RECORDINGS_DIR, THUMBNAILS_DIR, IMAGES_DIR } from './utils/constants.js';
@@ -39,14 +41,13 @@ const webPushManager = new WebPushNotificationManager(subscriptionManager);
 const lineNotificationManager = new LineNotificationManager(process.env.CHANNEL_ACCESS_TOKEN);
 
 // Logic: Use WebPush for RPi stream notifications
-// Ideally we would want both, but user rejected Composite.
-// Let's use WebPush as the primary for now since that's the new feature request, OR just swap it here easily.
-// Actually, let's keep Line as primary if available, but since the user ASKED for PWA, maybe they want to test it.
-// I'll swap to WebPushManager as the notification manager passed to RpiStreamManager as requested by "implement... for PWA".
+// ideally we would want both, but user rejected Composite.
 const notificationManager = webPushManager;
 
+const detectionManager = new ObjectDetectionManager();
+
 // Instantiate Managers
-const rpiStreamManager = new RpiStreamManager(rpiRecorder, notificationManager);
+const rpiStreamManager = new RpiStreamManager(rpiRecorder, notificationManager, detectionManager);
 // const rpiStreamManager = new RpiStreamManager();
 const espStreamManager = new EspStreamManager('http://192.168.1.114/stream', espRecorder);
 // const espStreamManager = new EspStreamManager('http://192.168.1.114/stream');
