@@ -49,7 +49,7 @@ const detectionManager = new ObjectDetectionManager();
 // Instantiate Managers
 const rpiStreamManager = new RpiStreamManager(rpiRecorder, notificationManager, detectionManager);
 // const rpiStreamManager = new RpiStreamManager();
-const espStreamManager = new EspStreamManager('http://192.168.1.114/stream', espRecorder);
+const espStreamManager = new EspStreamManager('http://192.168.1.114/stream', espRecorder, notificationManager, detectionManager);
 // const espStreamManager = new EspStreamManager('http://192.168.1.114/stream');
 
 
