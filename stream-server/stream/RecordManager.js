@@ -43,7 +43,15 @@ export class RecordManager {
         ];
 
         this.ffmpegProcess = spawn('ffmpeg', args);
-        inputStream.pipe(this.ffmpegProcess.stdin);
+
+        // Handle pipe errors (e.g. if ffmpeg dies immediately)
+        inputStream.pipe(this.ffmpegProcess.stdin).on('error', (err) => {
+            logger.error(`[${this.cameraName}] Pipe to ffmpeg error: ${err.message}`);
+        });
+
+        this.ffmpegProcess.stdin.on('error', (err) => {
+            logger.error(`[${this.cameraName}] ffmpeg stdin error: ${err.message}`);
+        });
 
         this.ffmpegProcess.stderr.on('data', (data) => {
             // Verbose logging usually too noisy, keeping it debug

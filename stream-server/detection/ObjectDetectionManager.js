@@ -55,6 +55,12 @@ export class ObjectDetectionManager extends EventEmitter {
         logger.info('Starting Python Detection Service...');
         try {
             this.pythonProcess = spawn(PYTHON_EXEC, [PYTHON_SCRIPT]);
+
+            // Prevent EPIPE crashes if process dies
+            this.pythonProcess.stdin.on('error', (err) => {
+                logger.error(`Python stdin error: ${err.message}`);
+            });
+
             const rl = createInterface({ input: this.pythonProcess.stdout });
 
             rl.on('line', (line) => {
