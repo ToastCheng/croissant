@@ -93,7 +93,7 @@ export default function StatsDashboard({ initialData }: { initialData?: StatsDat
           </div>
         </div>
 
-        <div className="flex gap-4">
+        <div className="flex flex-col md:flex-row gap-4">
           <div className="flex items-center gap-4 bg-white/5 p-4 rounded-2xl border border-white/10 backdrop-blur-sm">
             <span className="text-zinc-400 font-medium">Continuous Mode</span>
             <label className="inline-flex items-center cursor-pointer">
