@@ -103,6 +103,10 @@ export class RpiStreamManager extends StreamManager {
             this.startRecording(this.rpiProcess.stdout);
         }
 
+        this.rpiProcess.stderr.on('data', (data) => {
+            // logger.info(`rpicam-vid stderr: ${data}`);
+        });
+
         this.rpiProcess.on('error', (err) => {
             logger.error(`rpicam-vid error: ${err.message}`);
             this.forceStop();
