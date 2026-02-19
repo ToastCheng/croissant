@@ -2,6 +2,14 @@
 
 A real-time video streaming application featuring a Node.js WebSocket stream server and a Next.js web interface.
 
+## Key Features
+- **Multi-Camera Support**: Simultaneous streaming from Raspberry Pi (CSI) and ESP32-CAM (MJPEG).
+- **Object Detection**: Centralized YOLO v11 detection for People and Cats (with Multi-Source Multiplexing).
+- **Auto-Recording**: Continuous 24/7 loop recording with auto-rotation (ring buffer).
+- **Responsive UI**: Mobile-first design with Sidebar navigation and PWA support.
+- **Smart Notifications**: Line Messenger and Web Push notifications for detection events.
+- **Gallery**: Browse and view captured detection snapshots.
+
 ## Project Structure
 
 - `stream-server/`: Node.js server that streams video via WebSocket using MJPEG.
@@ -162,15 +170,18 @@ The server handles termination signals (`SIGINT`, `SIGTERM`) to ensure data inte
 2. It signals the `ffmpeg` process to finish the current recording segment.
 3. It waits for `ffmpeg` to exit cleanly, ensuring the MP4 file trailer is written and the file is not corrupted.
 
-### Image Server (Object Detection)
+### Image Server (Object Detection & Multi-Source MUX)
 
-The system includes a persistent Python process for real-time object detection (YOLO v11).
+The system features a centralized Python process for real-time object detection (YOLO v11) that handles multiple camera streams simultaneously.
 
-*   **Architecture**: `stream-server` spawns the Python process and pipes raw JPEG frames to its standard input (stdin) for low-latency processing.
-*   **Setup**: Requires a Python virtual environment in `image-server/venv`. The server uses `image-server/venv/bin/python` to ensure isolation.
+*   **Architecture**: `ObjectDetectionManager` spawns a single Python process (`video_processor.py`).
+*   **Multiplexing Protocol (MUX)**:
+    *   Streams (RPi, ESP32) send frames to the manager with a `sourceId`.
+    *   Manager packages the frame: `[Total Len][ID Len][Source ID][JPEG Data]` and pipes it to Python `stdin`.
+    *   Python processes the frame and returns JSON: `{ source: "rpi", detections: [...] }`.
 *   **Logic**:
-    *   Detects "cat" and "person".
-    *   Updates `catPresent` and `personPresent` states with a **2-second confirmation window** to filter out flickering detections.
+    *   Detects "cat" and "person" independently for each source.
+    *   Updates `catPresent` and `personPresent` states with a **2-second confirmation window** per camera.
 
 ### Notification System
 
