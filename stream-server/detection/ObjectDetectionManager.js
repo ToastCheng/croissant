@@ -125,8 +125,9 @@ export class ObjectDetectionManager extends EventEmitter {
             header.writeUInt8(idLen, 4);
             sourceBuffer.copy(header, 5);
 
-            this.pythonProcess.stdin.write(header);
-            this.pythonProcess.stdin.write(frame);
+            // atomic write to prevent interleaving between multiple sources
+            const packet = Buffer.concat([header, frame]);
+            this.pythonProcess.stdin.write(packet);
         } catch (e) {
             console.error('Error writing to python:', e);
         }

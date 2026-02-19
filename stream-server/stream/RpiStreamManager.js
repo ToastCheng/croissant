@@ -134,7 +134,7 @@ export class RpiStreamManager extends StreamManager {
                 this.broadcast(frame);
 
                 if (this.detectionManager) {
-                    this.detectionManager.processFrame(frame);
+                    this.detectionManager.processFrame(frame, 'rpi');
                 }
 
                 offset = end + 2;
