@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { FaPlay } from "react-icons/fa6";
 import { TbPlayerPauseFilled } from "react-icons/tb";
-import { FaCamera } from "react-icons/fa";
+import { FaCamera, FaExpand } from "react-icons/fa";
 
 export default function StreamPage() {
     const [isConnected, setIsConnected] = useState(false);
@@ -12,6 +12,7 @@ export default function StreamPage() {
     const [mode, setMode] = useState<'on-demand' | 'continuous' | null>(null);
     const [activeCamera, setActiveCamera] = useState<0 | 1>(0);
     const videoRef = useRef<HTMLImageElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
     const wsRef = useRef<WebSocket | null>(null);
 
     useEffect(() => {
@@ -119,6 +120,16 @@ export default function StreamPage() {
         }
     };
 
+    const handleFullscreen = () => {
+        if (!document.fullscreenElement) {
+            containerRef.current?.requestFullscreen().catch(err => {
+                console.error(`Error attempting to enable fullscreen: ${err.message}`);
+            });
+        } else {
+            document.exitFullscreen();
+        }
+    };
+
     return (
         <main className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-8 pt-24">
             <h1 className="text-4xl font-bold mb-8 tracking-tighter">Live Stream</h1>
@@ -139,7 +150,10 @@ export default function StreamPage() {
                 </button>
             </div>
 
-            <div className="relative w-full max-w-4xl aspect-video bg-zinc-900 rounded-2xl overflow-hidden border border-zinc-800 shadow-2xl flex items-center justify-center">
+            <div
+                ref={containerRef}
+                className="group relative w-full max-w-4xl aspect-video bg-zinc-900 rounded-lg md:rounded-2xl overflow-hidden border border-zinc-800 shadow-2xl flex items-center justify-center"
+            >
 
                 {isConnected ? (
                     <img
@@ -166,6 +180,17 @@ export default function StreamPage() {
                             <p className="text-sm text-zinc-400">Initializing Stream...</p>
                         </div>
                     </div>
+                )}
+
+                {/* Fullscreen Button */}
+                {isConnected && (
+                    <button
+                        onClick={handleFullscreen}
+                        className="absolute bottom-4 right-4 p-3 bg-black/50 hover:bg-black/80 text-white/70 hover:text-white rounded-xl backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all duration-300 z-50 flex items-center justify-center"
+                        aria-label="Toggle Fullscreen"
+                    >
+                        <FaExpand size={20} />
+                    </button>
                 )}
             </div>
 
