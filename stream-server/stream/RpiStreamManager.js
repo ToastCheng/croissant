@@ -107,20 +107,26 @@ export class RpiStreamManager extends StreamManager {
             // logger.info(`rpicam-vid stderr: ${data}`);
         });
 
-        this.rpiProcess.on('error', (err) => {
+        const currentProcess = this.rpiProcess;
+
+        currentProcess.on('error', (err) => {
             logger.error(`rpicam-vid error: ${err.message}`);
-            this.forceStop();
+            if (this.rpiProcess === currentProcess) {
+                this.forceStop();
+            }
         });
 
-        this.rpiProcess.on('exit', (code, signal) => {
+        currentProcess.on('exit', (code, signal) => {
             logger.info(`rpicam-vid exited with code ${code} and signal ${signal}`);
-            this.rpiProcess = null;
-            this.isStreaming = false;
-            this.stopRecording();
+            if (this.rpiProcess === currentProcess) {
+                this.rpiProcess = null;
+                this.isStreaming = false;
+                this.stopRecording();
+            }
         });
 
         let buffer = Buffer.alloc(0);
-        this.rpiProcess.stdout.on('data', (chunk) => {
+        currentProcess.stdout.on('data', (chunk) => {
             buffer = Buffer.concat([buffer, chunk]);
             let offset = 0;
             while (true) {
