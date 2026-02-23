@@ -11,6 +11,9 @@ export default function StreamPage() {
     const [firstFrameReceived, setFirstFrameReceived] = useState(false);
     const [mode, setMode] = useState<'on-demand' | 'continuous' | null>(null);
     const [activeCamera, setActiveCamera] = useState<0 | 1>(0);
+    const [isFullscreen, setIsFullscreen] = useState(false);
+    const [currentTime, setCurrentTime] = useState<Date | null>(null);
+
     const videoRef = useRef<HTMLImageElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const wsRef = useRef<WebSocket | null>(null);
@@ -90,6 +93,28 @@ export default function StreamPage() {
         };
     }, [activeCamera]);
 
+    // Handle Fullscreen state
+    useEffect(() => {
+        const handleFullscreenChange = () => {
+            setIsFullscreen(!!document.fullscreenElement);
+        };
+
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    }, []);
+
+    // Handle Clock tick
+    useEffect(() => {
+        if (!isFullscreen) return;
+
+        setCurrentTime(new Date());
+        const timer = setInterval(() => {
+            setCurrentTime(new Date());
+        }, 1000);
+
+        return () => clearInterval(timer);
+    }, [isFullscreen]);
+
     const handleToggleStream = () => {
         if (wsRef.current && isConnected) {
             if (isStreaming) {
@@ -163,6 +188,18 @@ export default function StreamPage() {
                     />
                 ) : (
                     <div className="text-zinc-500">Connecting to server...</div>
+                )}
+
+                {/* Floating Clock (Fullscreen & XL screens only) */}
+                {isFullscreen && currentTime && (
+                    <div className="absolute top-8 left-8 hidden md:flex flex-col items-start bg-black/60 backdrop-blur-md border border-white/10 p-6 rounded-3xl shadow-2xl z-50 pointer-events-none">
+                        <div className="text-6xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-white to-white/60 drop-shadow-lg tabular-nums">
+                            {currentTime.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        </div>
+                        <div className="text-lg font-medium tracking-widest text-zinc-400 uppercase mt-2 w-full text-center">
+                            {currentTime.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                        </div>
+                    </div>
                 )}
 
                 {/* Overlay if not streaming but connected */}
