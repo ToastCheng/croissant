@@ -14,6 +14,7 @@ export const THUMBNAILS_DIR = join(PROJECT_ROOT, 'thumbnails');
 export const IMAGES_DIR = join(PROJECT_ROOT, 'images');
 
 // Python paths (relative to stream-server)
+export const MAX_REPLAY_FILES = parseInt(process.env.MAX_REPLAY_FILES) || 288;
 export const PYTHON_EXEC = join(PROJECT_ROOT, '../image-server/venv/bin/python');
 export const PYTHON_SCRIPT = join(PROJECT_ROOT, '../image-server/video_processor.py');
 

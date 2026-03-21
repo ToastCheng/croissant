@@ -4,6 +4,7 @@ import path from 'node:path';
 import {
     RECORDINGS_DIR,
     THUMBNAILS_DIR,
+    MAX_REPLAY_FILES
 } from '../utils/constants.js';
 import logger from '../utils/logger.js';
 
@@ -101,8 +102,8 @@ export class RecordManager {
                 .filter(f => f.endsWith('.mp4'))
                 .sort();
 
-            if (mp4s.length > 36) {
-                mp4s.slice(0, mp4s.length - 36).forEach(f => {
+            if (mp4s.length > MAX_REPLAY_FILES) {
+                mp4s.slice(0, mp4s.length - MAX_REPLAY_FILES).forEach(f => {
                     fs.unlink(path.join(this.recDir, f), (err) => {
                         if (!err) {
                             logger.info(`[${this.cameraName}] Deleted old recording: ${f}`);
