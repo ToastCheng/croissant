@@ -25,7 +25,7 @@ import createSettingsRouter from './api/settings.js';
 import createNotificationsRouter from './api/notifications.js';
 
 // Constants
-import { RECORDINGS_DIR, THUMBNAILS_DIR, IMAGES_DIR } from './utils/constants.js';
+import { RECORDINGS_DIR, THUMBNAILS_DIR, IMAGES_DIR, ESP32_STREAM_URL } from './utils/constants.js';
 import logger from './utils/logger.js';
 
 // --- INITIALIZATION ---
@@ -48,9 +48,8 @@ const detectionManager = new ObjectDetectionManager();
 
 // Instantiate Managers
 const rpiStreamManager = new RpiStreamManager(rpiRecorder, notificationManager, detectionManager);
-// const rpiStreamManager = new RpiStreamManager();
-const espStreamManager = new EspStreamManager('http://192.168.1.114/stream', espRecorder, notificationManager, detectionManager);
-// const espStreamManager = new EspStreamManager('http://192.168.1.114/stream');
+const espStreamManager = new EspStreamManager(ESP32_STREAM_URL, espRecorder, notificationManager, detectionManager);
+
 
 
 // --- EXPRESS SETUP ---
