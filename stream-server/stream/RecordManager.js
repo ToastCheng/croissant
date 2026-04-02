@@ -38,7 +38,7 @@ export class RecordManager {
         const filenamePattern = `%Y%m%d-%H%M%S.mp4`;
 
         const args = [
-            '-f', 'mjpeg', '-framerate', '15', '-i', '-', '-c:v', 'libx264', '-preset', 'ultrafast',
+            '-f', 'mjpeg', '-framerate', '15', '-i', '-', '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28',
             '-f', 'segment', '-segment_time', '300', '-reset_timestamps', '1', '-strftime', '1',
             path.join(this.recDir, filenamePattern)
         ];
