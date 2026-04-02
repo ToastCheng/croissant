@@ -53,9 +53,29 @@ export class EspStreamManager extends StreamManager {
 
             this.startRecording(this.response);
 
+            let watchdog = null;
+            const resetWatchdog = () => {
+                if (watchdog) clearTimeout(watchdog);
+                watchdog = setTimeout(() => {
+                    logger.warn('ESP32 stream watchdog timeout (no data for 10s). Forcing reconnect...');
+                    if (this.response) {
+                        this.stopRecording(this.response);
+                        this.response.destroy();
+                        this.response = null;
+                    }
+                    if (this.request) {
+                        this.request.destroy();
+                        this.request = null;
+                    }
+                    this.scheduleReconnect();
+                }, 10000);
+            };
+            resetWatchdog();
+
             let buffer = Buffer.alloc(0);
 
             res.on('data', (chunk) => {
+                resetWatchdog();
                 buffer = Buffer.concat([buffer, chunk]);
                 let offset = 0;
                 while (true) {
@@ -77,6 +97,7 @@ export class EspStreamManager extends StreamManager {
             });
 
             res.on('end', () => {
+                if (watchdog) clearTimeout(watchdog);
                 logger.info('ESP32 Stream ended. Reconnecting...');
                 this.stopRecording(this.response);
                 this.response = null;
@@ -87,7 +108,12 @@ export class EspStreamManager extends StreamManager {
             logger.error(`ESP32 Connection Error: ${err.message}`);
             if (this.response) {
                 this.stopRecording(this.response);
+                this.response.destroy();
                 this.response = null;
+            }
+            if (this.request) {
+                this.request.destroy();
+                this.request = null;
             }
             this.scheduleReconnect();
         });
