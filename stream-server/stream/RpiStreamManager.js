@@ -197,16 +197,18 @@ export class RpiStreamManager extends StreamManager {
         const ss = String(now.getSeconds()).padStart(2, '0');
         const timestamp = `${yyyy}${mm}${dd}-${hh}${min}${ss}`;
         const filename = `${timestamp}.jpg`;
-        const catPath = path.join(IMAGES_DIR, filename);
+        const rpiDir = path.join(IMAGES_DIR, 'rpi');
+        if (!fs.existsSync(rpiDir)) fs.mkdirSync(rpiDir, { recursive: true });
+        const catPath = path.join(rpiDir, filename);
 
         fs.writeFile(catPath, this.currentFrame, (err) => {
             if (err) {
                 logger.error(`Failed to save ${filename}: ${err}`);
                 return;
             }
-            logger.info(`Saved images/${filename}`);
+            logger.info(`Saved images/rpi/${filename}`);
 
-            const imageUrl = `https://${HOSTNAME}/images/${filename}`;
+            const imageUrl = `https://${HOSTNAME}/images/rpi/${filename}`;
             this.notificationManager.send(
                 'Cat Detected',
                 '發現麻嚕!!',

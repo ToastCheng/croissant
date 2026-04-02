@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, Suspense } from "react";
 import Image from "next/image";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { FiChevronLeft, FiChevronRight } from "react-icons/fi";
 
-export default function ImageDetailPage() {
+function ImageDetailContent() {
     const params = useParams();
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const source = searchParams.get("source") || "rpi";
     const filename = params.filename as string;
     // Decode in case of URL encoding, though usually filenames are safe
     const decodedFilename = decodeURIComponent(filename);
@@ -15,7 +17,7 @@ export default function ImageDetailPage() {
     const [surrounding, setSurrounding] = useState<{ prev: string | null; next: string | null }>({ prev: null, next: null });
 
     useEffect(() => {
-        fetch(`/api/images/${encodeURIComponent(decodedFilename)}/surrounding`)
+        fetch(`/api/images/${source}/${encodeURIComponent(decodedFilename)}/surrounding`)
             .then(res => res.json())
             .then(data => {
                 if (!data.error) {
@@ -23,19 +25,19 @@ export default function ImageDetailPage() {
                 }
             })
             .catch(err => console.error("Failed to fetch surrounding images:", err));
-    }, [decodedFilename]);
+    }, [decodedFilename, source]);
 
     const goPrev = useCallback(() => {
         if (surrounding.prev) {
-            router.push(`/gallery/${encodeURIComponent(surrounding.prev)}`);
+            router.push(`/gallery/${encodeURIComponent(surrounding.prev)}?source=${source}`);
         }
-    }, [surrounding.prev, router]);
+    }, [surrounding.prev, router, source]);
 
     const goNext = useCallback(() => {
         if (surrounding.next) {
-            router.push(`/gallery/${encodeURIComponent(surrounding.next)}`);
+            router.push(`/gallery/${encodeURIComponent(surrounding.next)}?source=${source}`);
         }
-    }, [surrounding.next, router]);
+    }, [surrounding.next, router, source]);
 
     // Keyboard navigation
     useEffect(() => {
@@ -52,7 +54,7 @@ export default function ImageDetailPage() {
             {/* Back Button */}
             <div className="absolute top-8 left-8 z-20">
                 <button
-                    onClick={() => router.back()}
+                    onClick={() => router.push(`/gallery?source=${source}&page=1`)}
                     className="bg-black/50 backdrop-blur-md border border-white/10 text-white px-6 py-2 rounded-full hover:bg-white/10 transition-colors flex items-center gap-2"
                 >
                     ← Back
@@ -73,7 +75,7 @@ export default function ImageDetailPage() {
 
                 <div className="relative w-full h-full bg-zinc-900 rounded-lg overflow-hidden shadow-2xl border border-zinc-800">
                     <Image
-                        src={`/images/${decodedFilename}`}
+                        src={`/images/${source}/${decodedFilename}`}
                         alt={decodedFilename}
                         fill
                         className="object-contain"
@@ -99,7 +101,7 @@ export default function ImageDetailPage() {
                     {decodedFilename}
                 </h1>
                 <a
-                    href={`/images/${decodedFilename}`}
+                    href={`/images/${source}/${decodedFilename}`}
                     download
                     className="text-green-400 hover:text-green-300 text-sm underline decoration-dotted underline-offset-4 inline-block"
                 >
@@ -107,5 +109,17 @@ export default function ImageDetailPage() {
                 </a>
             </div>
         </main>
+    );
+}
+
+export default function ImageDetailPage() {
+    return (
+        <Suspense fallback={
+            <main className="min-h-screen bg-black flex justify-center items-center">
+                <div className="w-8 h-8 border-4 border-white/20 border-t-white rounded-full animate-spin" />
+            </main>
+        }>
+            <ImageDetailContent />
+        </Suspense>
     );
 }

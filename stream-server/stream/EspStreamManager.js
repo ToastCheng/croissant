@@ -148,16 +148,18 @@ export class EspStreamManager extends StreamManager {
         const ss = String(now.getSeconds()).padStart(2, '0');
         const timestamp = `${yyyy}${mm}${dd}-${hh}${min}${ss}`;
         const filename = `esp32-${timestamp}.jpg`;
-        const catPath = path.join(IMAGES_DIR, filename);
+        const espDir = path.join(IMAGES_DIR, 'esp32');
+        if (!fs.existsSync(espDir)) fs.mkdirSync(espDir, { recursive: true });
+        const catPath = path.join(espDir, filename);
 
         fs.writeFile(catPath, this.currentFrame, (err) => {
             if (err) {
                 logger.error(`Failed to save ${filename}: ${err}`);
                 return;
             }
-            logger.info(`Saved images/${filename}`);
+            logger.info(`Saved images/esp32/${filename}`);
 
-            const imageUrl = `https://${HOSTNAME}/images/${filename}`;
+            const imageUrl = `https://${HOSTNAME}/images/esp32/${filename}`;
             if (this.notificationManager) {
                 this.notificationManager.send(
                     'Cat Detected (ESP32)',
