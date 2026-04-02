@@ -10,7 +10,23 @@ export default function StreamPage() {
     const [isStreaming, setIsStreaming] = useState(false);
     const [firstFrameReceived, setFirstFrameReceived] = useState(false);
     const [mode, setMode] = useState<'on-demand' | 'continuous' | null>(null);
-    const [activeCamera, setActiveCamera] = useState<0 | 1>(0);
+    const [activeCamera, setActiveCamera] = useState<0 | 1>(() => {
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('source') === 'esp32' ? 1 : 0;
+        }
+        return 0;
+    });
+
+    const handleCameraChange = (cam: 0 | 1) => {
+        setActiveCamera(cam);
+        if (typeof window !== 'undefined') {
+            const url = new URL(window.location.href);
+            url.searchParams.set('source', cam === 1 ? 'esp32' : 'rpi');
+            window.history.replaceState({}, '', url.toString());
+        }
+    };
+
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [currentTime, setCurrentTime] = useState<Date | null>(null);
 
@@ -162,13 +178,13 @@ export default function StreamPage() {
             {/* Camera Tabs */}
             <div className="flex gap-4 mb-6">
                 <button
-                    onClick={() => setActiveCamera(0)}
+                    onClick={() => handleCameraChange(0)}
                     className={`px-6 py-2 rounded-full font-medium transition-all ${activeCamera === 0 ? 'bg-white text-black shadow-lg' : 'bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
                 >
                     Camera #0 (RPi)
                 </button>
                 <button
-                    onClick={() => setActiveCamera(1)}
+                    onClick={() => handleCameraChange(1)}
                     className={`px-6 py-2 rounded-full font-medium transition-all ${activeCamera === 1 ? 'bg-white text-black shadow-lg' : 'bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
                 >
                     Camera #1 (ESP32)
