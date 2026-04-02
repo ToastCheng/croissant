@@ -14,6 +14,7 @@ import logger from '../utils/logger.js';
 export class EspStreamManager extends StreamManager {
     constructor(url, recorder, notificationManager, detectionManager) {
         super(recorder);
+        this.tag = 'esp32';
         this.url = url;
         this.notificationManager = notificationManager;
         this.detectionManager = detectionManager;

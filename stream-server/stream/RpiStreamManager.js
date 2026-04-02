@@ -21,6 +21,7 @@ if (!fs.existsSync(IMAGES_DIR)) fs.mkdirSync(IMAGES_DIR, { recursive: true });
 export class RpiStreamManager extends StreamManager {
     constructor(recorder, notificationManager, detectionManager) {
         super(recorder);
+        this.tag = 'rpi';
         this.rpiProcess = null;
         this.isStreaming = false;
         this.mode = 'continuous';

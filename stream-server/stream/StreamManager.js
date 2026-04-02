@@ -3,6 +3,7 @@ import logger from '../utils/logger.js';
 
 export class StreamManager {
     constructor(recorder) {
+        this.tag = '';
         this.clients = new Set();
         this.currentFrame = null;
         this.recorder = recorder;
@@ -11,7 +12,7 @@ export class StreamManager {
 
     setMode(mode) {
         if (mode !== 'on-demand' && mode !== 'continuous') return false;
-        logger.info(`Switching mode to: ${mode}`);
+        logger.info(`${this.tag}: Switching mode to: ${mode}`);
         this.mode = mode;
         return true;
     }
@@ -32,14 +33,14 @@ export class StreamManager {
     addClient(ws) {
         if (!this.clients.has(ws)) {
             this.clients.add(ws);
-            logger.info(`Client added. Total clients: ${this.clients.size}`);
+            logger.info(`${this.tag}: Client added. Total clients: ${this.clients.size}`);
         }
     }
 
     removeClient(ws) {
         if (this.clients.has(ws)) {
             this.clients.delete(ws);
-            logger.info(`Client removed. Total clients: ${this.clients.size}`);
+            logger.info(`${this.tag}: Client removed. Total clients: ${this.clients.size}`);
         }
     }
 
@@ -54,10 +55,10 @@ export class StreamManager {
         if (ws.readyState === WebSocket.OPEN) {
             try {
                 ws.send(frame, (err) => {
-                    if (err) logger.error(`WS send error: ${err}`);
+                    if (err) logger.error(`${this.tag}: WS send error: ${err}`);
                 });
             } catch (e) {
-                logger.error(`WS broadcast exception: ${e}`);
+                logger.error(`${this.tag}: WS broadcast exception: ${e}`);
                 this.removeClient(ws);
             }
         } else if (ws.readyState === WebSocket.CLOSING || ws.readyState === WebSocket.CLOSED) {
